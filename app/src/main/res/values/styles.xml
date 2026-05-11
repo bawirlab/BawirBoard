@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BawirBoard" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryVariant">@color/key_action_bg_pressed</item>
+        <item name="colorOnPrimary">@color/key_text</item>
+        <item name="android:windowBackground">@color/keyboard_bg</item>
+        <item name="android:textColor">@color/key_text</item>
+    </style>
+
+    <style name="Theme.BawirBoard.Setup" parent="Theme.BawirBoard">
+        <item name="android:windowBackground">@color/keyboard_bg</item>
+    </style>
+
+    <style name="KeyboardPopupWindow">
+        <item name="android:background">@color/popup_bg</item>
+    </style>
+</resources>

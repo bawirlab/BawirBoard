@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- GBoard Dark Theme Colors -->
+    <color name="keyboard_bg">#1B1B1B</color>
+    <color name="key_bg">#2D2D2D</color>
+    <color name="key_bg_pressed">#3D3D3D</color>
+    <color name="key_special_bg">#1B1B1B</color>
+    <color name="key_action_bg">#4285F4</color>
+    <color name="key_action_bg_pressed">#2A75F3</color>
+    <color name="key_text">#FFFFFF</color>
+    <color name="key_hint_text">#9E9E9E</color>
+    <color name="key_special_text">#BDBDBD</color>
+    <color name="key_border">#3D3D3D</color>
+    <color name="popup_bg">#424242</color>
+    <color name="popup_text">#FFFFFF</color>
+    <color name="divider">#424242</color>
+    <color name="accent">#4285F4</color>
+</resources>

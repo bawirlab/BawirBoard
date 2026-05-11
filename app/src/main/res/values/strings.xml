@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BawirBoard</string>
+    <string name="ime_name">Karakalpak Latin Keyboard</string>
+    <string name="subtype_karakalpak_latin">Qaraqalpaq (Latin)</string>
+    <string name="setup_title">BawirBoard Setup</string>
+    <string name="setup_step1">Step 1: Enable BawirBoard</string>
+    <string name="setup_step1_desc">Go to Settings → System → Languages &amp; input → On-screen keyboard → Manage keyboards and enable BawirBoard.</string>
+    <string name="setup_step2">Step 2: Select BawirBoard</string>
+    <string name="setup_step2_desc">Tap the keyboard icon in the navigation bar and select BawirBoard.</string>
+    <string name="btn_enable">Enable Keyboard</string>
+    <string name="btn_select">Select Keyboard</string>
+    <string name="key_delete">⌫</string>
+    <string name="key_shift">⇧</string>
+    <string name="key_enter">↵</string>
+    <string name="key_space">SPACE</string>
+    <string name="key_numbers">123</string>
+    <string name="key_letters">ABC</string>
+    <string name="key_symbols">#+</string>
+</resources>
