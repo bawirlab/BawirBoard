@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="key_height">56dp</dimen>
-    <dimen name="key_margin">3dp</dimen>
-    <dimen name="keyboard_padding_top">6dp</dimen>
+    <dimen name="key_margin">4dp</dimen>
+    <dimen name="keyboard_padding_top">4dp</dimen>
     <dimen name="keyboard_padding_bottom">4dp</dimen>
+    <dimen name="toolbar_height">44dp</dimen>
 </resources>

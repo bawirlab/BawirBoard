@@ -8,10 +8,13 @@ data class KeyDef(
     val type: KeyType = KeyType.LETTER,
     val widthWeight: Float = 1f,
     val popupChars: List<String> = emptyList()
-)
+) {
+    val popupCharsShifted: List<String> = popupChars.map { it.uppercase() }
+}
 
 object KarakalpakLayout {
 
+    // Standard QWERTY row 1 — Karakalpak accents on u and o
     val LETTERS_ROW1 = listOf(
         KeyDef("q", "Q", popupChars = listOf("1")),
         KeyDef("w", "W", popupChars = listOf("2")),
@@ -19,25 +22,26 @@ object KarakalpakLayout {
         KeyDef("r", "R", popupChars = listOf("4")),
         KeyDef("t", "T", popupChars = listOf("5")),
         KeyDef("y", "Y", popupChars = listOf("6")),
-        KeyDef("u", "U", popupChars = listOf("7")),
+        KeyDef("u", "U", popupChars = listOf("ú", "ü", "7")),
         KeyDef("i", "I", popupChars = listOf("8")),
-        KeyDef("o", "O", popupChars = listOf("9")),
+        KeyDef("o", "O", popupChars = listOf("ó", "ö", "9")),
         KeyDef("p", "P", popupChars = listOf("0"))
     )
 
+    // Standard QWERTY row 2 — á/ä on a, ǵ on g
     val LETTERS_ROW2 = listOf(
-        KeyDef("a", "A"),
+        KeyDef("a", "A", popupChars = listOf("á", "ä")),
         KeyDef("s", "S"),
         KeyDef("d", "D"),
         KeyDef("f", "F"),
-        KeyDef("g", "G"),
-        KeyDef("ǵ", "Ǵ", popupChars = listOf("g", "G")),
+        KeyDef("g", "G", popupChars = listOf("ǵ")),
         KeyDef("h", "H"),
         KeyDef("j", "J"),
         KeyDef("k", "K"),
         KeyDef("l", "L")
     )
 
+    // Standard QWERTY row 3 — ń on n
     val LETTERS_ROW3 = listOf(
         KeyDef("⇧", type = KeyType.SHIFT, widthWeight = 1.5f),
         KeyDef("z", "Z"),
@@ -45,19 +49,16 @@ object KarakalpakLayout {
         KeyDef("c", "C"),
         KeyDef("v", "V"),
         KeyDef("b", "B"),
-        KeyDef("n", "N"),
-        KeyDef("ń", "Ń", popupChars = listOf("n", "N")),
+        KeyDef("n", "N", popupChars = listOf("ń")),
         KeyDef("m", "M"),
         KeyDef("⌫", type = KeyType.DELETE, widthWeight = 1.5f)
     )
 
     val LETTERS_ROW4 = listOf(
         KeyDef("123", type = KeyType.NUM_TOGGLE, widthWeight = 1.5f),
-        KeyDef(",", "!"),
-        KeyDef("ó", "Ó", popupChars = listOf("o", "O")),
-        KeyDef("ú", "Ú", popupChars = listOf("u", "U")),
+        KeyDef(",", ","),
         KeyDef(" ", type = KeyType.SPACE, widthWeight = 5f),
-        KeyDef("'", "\""),
+        KeyDef(".", "."),
         KeyDef("↵", type = KeyType.ENTER, widthWeight = 2f)
     )
 

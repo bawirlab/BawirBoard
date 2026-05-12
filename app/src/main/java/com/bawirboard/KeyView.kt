@@ -2,6 +2,8 @@ package com.bawirboard
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -11,7 +13,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.PopupWindow
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 
 class KeyView(
     context: Context,
@@ -24,6 +25,7 @@ class KeyView(
     private var popup: PopupWindow? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isLongPressing = false
+    private var isShifted = false
     private val longPressDelay = 350L
     private val repeatDelay = 50L
 
@@ -37,13 +39,18 @@ class KeyView(
         }
     }
 
+    private val isDark get() = PrefsManager.isDarkMode(context)
+    private val fontScale get() = PrefsManager.getFontScale(context)
+    private val accentColor get() = PrefsManager.accentColorFor(PrefsManager.getColorTheme(context))
+
     init {
         isClickable = true
+        elevation = 2f * resources.displayMetrics.density
 
         hintLabel = TextView(context).apply {
-            textSize = 9f
-            setTextColor(ContextCompat.getColor(context, R.color.key_hint_text))
+            textSize = 8f
             gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             visibility = INVISIBLE
         }
         addView(hintLabel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
@@ -54,6 +61,7 @@ class KeyView(
 
         label = TextView(context).apply {
             gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
         }
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.CENTER
@@ -64,45 +72,67 @@ class KeyView(
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density + 0.5f).toInt()
+    private val Float.dp: Float get() = this * resources.displayMetrics.density
 
-    private fun applyStyle() {
-        val bg = when (keyDef.type) {
-            KeyType.SHIFT, KeyType.DELETE, KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE ->
-                ContextCompat.getDrawable(context, R.drawable.key_bg_special)
-            KeyType.ENTER ->
-                ContextCompat.getDrawable(context, R.drawable.key_bg_action)
-            else ->
-                ContextCompat.getDrawable(context, R.drawable.key_bg_normal)
+    // --- Dynamic color helpers ---
+
+    private fun colorKeyBg() = if (isDark) 0xFF2D2D2D.toInt() else 0xFFFFFFFF.toInt()
+    private fun colorKeyBgPressed() = if (isDark) 0xFF484848.toInt() else 0xFFCBCBCB.toInt()
+    private fun colorSpecialBg() = if (isDark) 0xFF1B1B1B.toInt() else 0xFFADB5BD.toInt()
+    private fun colorSpecialBgPressed() = if (isDark) 0xFF2D2D2D.toInt() else 0xFF9EA4AC.toInt()
+    private fun colorKeyText() = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
+    private fun colorSpecialText() = if (isDark) 0xFFBDBDBD.toInt() else 0xFF333333.toInt()
+    private fun colorHintText() = if (isDark) 0xFF9E9E9E.toInt() else 0xFF888888.toInt()
+    private fun darkenAccent() = darkenColor(accentColor)
+
+    private fun darkenColor(color: Int): Int {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(color, hsv)
+        hsv[2] *= 0.82f
+        return android.graphics.Color.HSVToColor(hsv)
+    }
+
+    private fun makeKeyDrawable(normal: Int, pressed: Int): StateListDrawable {
+        val r = 8f.dp
+        fun shape(c: Int) = GradientDrawable().apply { setColor(c); cornerRadius = r }
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), shape(pressed))
+            addState(intArrayOf(), shape(normal))
         }
-        background = bg
+    }
+
+    fun applyStyle() {
+        background = when (keyDef.type) {
+            KeyType.SHIFT, KeyType.DELETE, KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE ->
+                makeKeyDrawable(colorSpecialBg(), colorSpecialBgPressed())
+            KeyType.ENTER ->
+                makeKeyDrawable(accentColor, darkenAccent())
+            else ->
+                makeKeyDrawable(colorKeyBg(), colorKeyBgPressed())
+        }
 
         val textColor = when (keyDef.type) {
-            KeyType.SHIFT, KeyType.DELETE, KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE ->
-                ContextCompat.getColor(context, R.color.key_special_text)
-            else ->
-                ContextCompat.getColor(context, R.color.key_text)
+            KeyType.ENTER -> 0xFFFFFFFF.toInt()
+            KeyType.SHIFT, KeyType.DELETE, KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE -> colorSpecialText()
+            else -> colorKeyText()
         }
-
         label.setTextColor(textColor)
-        label.text = when (keyDef.type) {
-            KeyType.SPACE -> ""
-            else -> keyDef.label
-        }
+        hintLabel.setTextColor(colorHintText())
 
-        label.textSize = when (keyDef.type) {
+        label.text = if (keyDef.type == KeyType.SPACE) "" else keyDef.label
+
+        val baseSize = when (keyDef.type) {
             KeyType.LETTER -> 17f
             KeyType.SHIFT, KeyType.DELETE -> 20f
             KeyType.SPACE -> 13f
             else -> 15f
         }
+        label.textSize = baseSize * fontScale
 
-        label.setTypeface(null, when (keyDef.type) {
-            KeyType.LETTER, KeyType.SPACE -> Typeface.NORMAL
-            else -> Typeface.BOLD
-        })
-
-        if (keyDef.popupChars.isNotEmpty()) {
-            hintLabel.text = keyDef.popupChars.first()
+        val activePopups = if (isShifted && keyDef.popupCharsShifted.isNotEmpty())
+            keyDef.popupCharsShifted else keyDef.popupChars
+        if (activePopups.isNotEmpty()) {
+            hintLabel.text = activePopups.first()
             hintLabel.visibility = VISIBLE
         } else {
             hintLabel.visibility = INVISIBLE
@@ -110,19 +140,23 @@ class KeyView(
     }
 
     fun updateShiftState(shifted: Boolean) {
+        isShifted = shifted
         if (keyDef.type == KeyType.LETTER) {
             label.text = if (shifted) keyDef.shiftLabel else keyDef.label
+        }
+        // Refresh hint to show correct case
+        val activePopups = if (shifted && keyDef.popupCharsShifted.isNotEmpty())
+            keyDef.popupCharsShifted else keyDef.popupChars
+        if (activePopups.isNotEmpty()) {
+            hintLabel.text = activePopups.first()
+            hintLabel.visibility = VISIBLE
         }
     }
 
     fun updateShiftKeyAppearance(shiftActive: Boolean, capsLock: Boolean) {
         if (keyDef.type == KeyType.SHIFT) {
             label.text = if (capsLock) "⇪" else "⇧"
-            val color = if (capsLock || shiftActive)
-                ContextCompat.getColor(context, R.color.accent)
-            else
-                ContextCompat.getColor(context, R.color.key_special_text)
-            label.setTextColor(color)
+            label.setTextColor(if (capsLock || shiftActive) accentColor else colorSpecialText())
         }
     }
 
@@ -166,15 +200,17 @@ class KeyView(
 
     private fun onLongPress() {
         isLongPressing = true
+        val activePopups = if (isShifted && keyDef.popupCharsShifted.isNotEmpty())
+            keyDef.popupCharsShifted else keyDef.popupChars
         when {
             keyDef.type == KeyType.DELETE -> {
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 listener.onKeyDelete()
                 handler.postDelayed(repeatRunnable, repeatDelay)
             }
-            keyDef.popupChars.isNotEmpty() -> {
+            activePopups.isNotEmpty() -> {
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                showPopupPicker()
+                showPopupPicker(activePopups)
             }
             keyDef.type == KeyType.SPACE -> {
                 listener.onSwitchKeyboard()
@@ -183,12 +219,20 @@ class KeyView(
         }
     }
 
-    private fun showPopupPicker() {
+    private fun showPopupPicker(chars: List<String>) {
+        val bgColor = if (isDark) 0xFF424242.toInt() else 0xFFF5F5F5.toInt()
+        val txtColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
+
         val tv = TextView(context).apply {
-            text = keyDef.popupChars.joinToString("  ")
+            text = chars.joinToString("  ")
             textSize = 18f
-            setTextColor(ContextCompat.getColor(context, R.color.popup_text))
-            setBackgroundColor(ContextCompat.getColor(context, R.color.popup_bg))
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            setTextColor(txtColor)
+            val d = GradientDrawable().apply {
+                setColor(bgColor)
+                cornerRadius = 10f.dp
+            }
+            background = d
             gravity = Gravity.CENTER
             setPadding(24.dp, 12.dp, 24.dp, 12.dp)
         }
@@ -204,8 +248,8 @@ class KeyView(
 
         postDelayed({
             dismissPopup()
-            if (keyDef.popupChars.isNotEmpty() && isLongPressing) {
-                listener.onKeyText(keyDef.popupChars.first())
+            if (chars.isNotEmpty() && isLongPressing) {
+                listener.onKeyText(chars.first())
                 isLongPressing = false
             }
         }, 800)

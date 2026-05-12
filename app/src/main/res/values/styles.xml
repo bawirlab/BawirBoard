@@ -11,6 +11,11 @@
         <item name="android:windowBackground">@color/keyboard_bg</item>
     </style>
 
+    <style name="Theme.BawirBoard.Settings" parent="Theme.BawirBoard">
+        <item name="android:windowBackground">@color/settings_bg</item>
+        <item name="android:textColor">@color/settings_text</item>
+    </style>
+
     <style name="KeyboardPopupWindow">
         <item name="android:background">@color/popup_bg</item>
     </style>
