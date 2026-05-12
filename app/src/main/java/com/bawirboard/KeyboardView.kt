@@ -298,7 +298,7 @@ class KeyboardView(
         )
 
         val scroll = HorizontalScrollView(context).apply {
-            scrollbarSize = 0
+            isHorizontalScrollBarEnabled = false
         }
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
