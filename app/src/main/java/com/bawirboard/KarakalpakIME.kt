@@ -7,28 +7,20 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 
 class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
-    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var keyboardView: KeyboardView? = null
     private var lastShiftTime = 0L
     private val doubleTapThreshold = 400L
 
+    // Track number-row setting to detect changes while settings screen is open
+    private var lastNumberRowSetting = false
+
     override fun onCreateInputView(): View {
         val kb = KeyboardView(this, this)
         keyboardView = kb
-
-        // Pre-load heavy resources off the main thread (wordlist etc. in future)
-        serviceScope.launch(Dispatchers.IO) {
-            // placeholder for future async asset loading
-        }
-
+        lastNumberRowSetting = PrefsManager.isNumberRowEnabled(this)
         return kb
     }
 
@@ -42,8 +34,17 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         }
     }
 
+    override fun onWindowShown() {
+        super.onWindowShown()
+        // Rebuild letter layout if number-row setting changed while in SettingsActivity
+        val current = PrefsManager.isNumberRowEnabled(this)
+        if (current != lastNumberRowSetting) {
+            lastNumberRowSetting = current
+            keyboardView?.rebuildLetterLayout()
+        }
+    }
+
     override fun onDestroy() {
-        serviceScope.cancel()
         keyboardView = null
         super.onDestroy()
     }
@@ -121,5 +122,13 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onDismissKeyboard() {
         requestHideSelf(0)
+    }
+
+    override fun onShowKeyPreview(anchor: View, char: String) {
+        keyboardView?.showKeyPreview(anchor, char)
+    }
+
+    override fun onHideKeyPreview() {
+        keyboardView?.hideKeyPreview()
     }
 }

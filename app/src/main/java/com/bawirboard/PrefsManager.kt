@@ -20,6 +20,9 @@ object PrefsManager {
     fun getColorTheme(ctx: Context) = prefs(ctx).getString("color_theme", "blue") ?: "blue"
     fun setColorTheme(ctx: Context, v: String) = prefs(ctx).edit().putString("color_theme", v).apply()
 
+    fun isNumberRowEnabled(ctx: Context) = prefs(ctx).getBoolean("number_row", false)
+    fun setNumberRowEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("number_row", v).apply()
+
     fun accentColorFor(theme: String): Int = when (theme) {
         "purple" -> 0xFF7C4DFF.toInt()
         "green"  -> 0xFF00BFA5.toInt()

@@ -19,6 +19,7 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupDarkModeSwitch()
+        setupNumberRowSwitch()
         setupFontSizeSeek()
         setupKeyHeightSeek()
         buildColorChips()
@@ -37,6 +38,13 @@ class SettingsActivity : AppCompatActivity() {
         binding.switchDarkMode.setOnCheckedChangeListener { _, checked ->
             PrefsManager.setDarkMode(this, checked)
             recreate()
+        }
+    }
+
+    private fun setupNumberRowSwitch() {
+        binding.switchNumberRow.isChecked = PrefsManager.isNumberRowEnabled(this)
+        binding.switchNumberRow.setOnCheckedChangeListener { _, checked ->
+            PrefsManager.setNumberRowEnabled(this, checked)
         }
     }
 

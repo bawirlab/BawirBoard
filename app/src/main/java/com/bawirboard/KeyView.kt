@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.PopupWindow
@@ -61,7 +62,11 @@ class KeyView(
 
         label = TextView(context).apply {
             gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            // Bold font for letter keys; normal for others
+            typeface = if (keyDef.type == KeyType.LETTER)
+                Typeface.DEFAULT_BOLD
+            else
+                Typeface.create("sans-serif", Typeface.NORMAL)
         }
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.CENTER
@@ -76,12 +81,12 @@ class KeyView(
 
     // --- Dynamic color helpers ---
 
-    private fun colorKeyBg() = if (isDark) 0xFF2D2D2D.toInt() else 0xFFFFFFFF.toInt()
-    private fun colorKeyBgPressed() = if (isDark) 0xFF484848.toInt() else 0xFFCBCBCB.toInt()
-    private fun colorSpecialBg() = if (isDark) 0xFF1B1B1B.toInt() else 0xFFADB5BD.toInt()
-    private fun colorSpecialBgPressed() = if (isDark) 0xFF2D2D2D.toInt() else 0xFF9EA4AC.toInt()
+    private fun colorKeyBg() = if (isDark) 0xFF3A3A3A.toInt() else 0xFFFFFFFF.toInt()
+    private fun colorKeyBgPressed() = if (isDark) 0xFF555555.toInt() else 0xFFCBCBCB.toInt()
+    private fun colorSpecialBg() = if (isDark) 0xFF252525.toInt() else 0xFFADB5BD.toInt()
+    private fun colorSpecialBgPressed() = if (isDark) 0xFF383838.toInt() else 0xFF9EA4AC.toInt()
     private fun colorKeyText() = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
-    private fun colorSpecialText() = if (isDark) 0xFFBDBDBD.toInt() else 0xFF333333.toInt()
+    private fun colorSpecialText() = if (isDark) 0xFFCCCCCC.toInt() else 0xFF333333.toInt()
     private fun colorHintText() = if (isDark) 0xFF9E9E9E.toInt() else 0xFF888888.toInt()
     private fun darkenAccent() = darkenColor(accentColor)
 
@@ -119,12 +124,16 @@ class KeyView(
         label.setTextColor(textColor)
         hintLabel.setTextColor(colorHintText())
 
-        label.text = if (keyDef.type == KeyType.SPACE) "" else keyDef.label
+        label.text = when (keyDef.type) {
+            KeyType.SPACE -> "Space"
+            else -> keyDef.label
+        }
 
         val baseSize = when (keyDef.type) {
             KeyType.LETTER -> 17f
             KeyType.SHIFT, KeyType.DELETE -> 20f
             KeyType.SPACE -> 13f
+            KeyType.ENTER -> 22f
             else -> 15f
         }
         label.textSize = baseSize * fontScale
@@ -144,7 +153,6 @@ class KeyView(
         if (keyDef.type == KeyType.LETTER) {
             label.text = if (shifted) keyDef.shiftLabel else keyDef.label
         }
-        // Refresh hint to show correct case
         val activePopups = if (shifted && keyDef.popupCharsShifted.isNotEmpty())
             keyDef.popupCharsShifted else keyDef.popupChars
         if (activePopups.isNotEmpty()) {
@@ -167,11 +175,19 @@ class KeyView(
                     isLongPressing = false
                     handler.postDelayed(longPressRunnable, longPressDelay)
                     v.isPressed = true
+                    // Show key preview for letter keys
+                    if (keyDef.type == KeyType.LETTER) {
+                        val char = if (isShifted) keyDef.shiftLabel else keyDef.label
+                        listener.onShowKeyPreview(this, char)
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handler.removeCallbacks(longPressRunnable)
                     handler.removeCallbacks(repeatRunnable)
+                    if (keyDef.type == KeyType.LETTER) {
+                        listener.onHideKeyPreview()
+                    }
                     if (!isLongPressing) {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         onTap()
@@ -210,6 +226,8 @@ class KeyView(
             }
             activePopups.isNotEmpty() -> {
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                // Hide key preview before showing popup
+                if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview()
                 showPopupPicker(activePopups)
             }
             keyDef.type == KeyType.SPACE -> {
@@ -237,14 +255,30 @@ class KeyView(
             setPadding(24.dp, 12.dp, 24.dp, 12.dp)
         }
 
+        // Measure the popup before showing so we can position it correctly above the key
+        tv.measure(
+            ViewGroup.MeasureSpec.makeMeasureSpec(0, ViewGroup.MeasureSpec.UNSPECIFIED),
+            ViewGroup.MeasureSpec.makeMeasureSpec(0, ViewGroup.MeasureSpec.UNSPECIFIED)
+        )
+        val popupW = tv.measuredWidth
+        val popupH = tv.measuredHeight
+
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+
+        // Center popup horizontally above the key, flush to screen edges if needed
+        val screenW = resources.displayMetrics.widthPixels
+        val popupX = (loc[0] + width / 2 - popupW / 2).coerceIn(0, (screenW - popupW).coerceAtLeast(0))
+        val popupY = (loc[1] - popupH - 8.dp).coerceAtLeast(0)
+
         popup = PopupWindow(tv, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             isOutsideTouchable = true
             isFocusable = false
         }
 
-        val loc = IntArray(2)
-        getLocationOnScreen(loc)
-        popup?.showAtLocation(this, Gravity.NO_GRAVITY, loc[0], loc[1] - height * 2)
+        try {
+            popup?.showAtLocation(this, Gravity.NO_GRAVITY, popupX, popupY)
+        } catch (_: Exception) { }
 
         postDelayed({
             dismissPopup()

@@ -22,6 +22,7 @@
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">APPEARANCE</string>
     <string name="settings_dark_mode">Dark Mode</string>
+    <string name="settings_number_row">Dedicated Number Row</string>
     <string name="settings_keys">KEYS</string>
     <string name="settings_font_size">Key Label Size</string>
     <string name="settings_key_height">Keyboard Height</string>
