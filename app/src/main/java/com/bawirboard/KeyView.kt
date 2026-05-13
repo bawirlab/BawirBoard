@@ -257,8 +257,8 @@ class KeyView(
 
         // Measure the popup before showing so we can position it correctly above the key
         tv.measure(
-            ViewGroup.MeasureSpec.makeMeasureSpec(0, ViewGroup.MeasureSpec.UNSPECIFIED),
-            ViewGroup.MeasureSpec.makeMeasureSpec(0, ViewGroup.MeasureSpec.UNSPECIFIED)
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
         val popupW = tv.measuredWidth
         val popupH = tv.measuredHeight
