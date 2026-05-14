@@ -33,12 +33,10 @@ class KeyboardView(
     private var mode = Mode.LETTERS
     private var shiftState = ShiftState.OFF
 
-    // Separate key row lists per mode
     private val letterKeyRows = mutableListOf<List<KeyView>>()
     private val numberKeyRows = mutableListOf<List<KeyView>>()
     private val symbolKeyRows = mutableListOf<List<KeyView>>()
 
-    // Three separate containers — built lazily; numbers/symbols built on first switch
     private val lettersContainer = LinearLayout(context).apply { orientation = VERTICAL }
     private val numbersContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val symbolsContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
@@ -47,7 +45,11 @@ class KeyboardView(
     private var numbersBuilt = false
     private var symbolsBuilt = false
 
-    // Single reusable key preview popup
+    // Inline settings panel (built lazily)
+    private var settingsPanel: LinearLayout? = null
+    private var settingsShowing = false
+
+    // Key preview popup
     private lateinit var previewLabel: TextView
     private lateinit var previewPopup: PopupWindow
     private var previewShowing = false
@@ -56,7 +58,15 @@ class KeyboardView(
     private val accentColor get() = PrefsManager.accentColorFor(PrefsManager.getColorTheme(context))
 
     private val keyHeightPx: Int
-        get() = (56 * resources.displayMetrics.density * PrefsManager.getKeyHeightScale(context) + 0.5f).toInt()
+        get() = (48 * resources.displayMetrics.density * PrefsManager.getKeyHeightScale(context) + 0.5f).toInt()
+
+    // Horizontal padding per row based on width scale (0 = full width, positive = narrower keys)
+    private val rowHPad: Int
+        get() {
+            val scale = PrefsManager.getKeyWidthScale(context)
+            val screenW = resources.displayMetrics.widthPixels
+            return ((1f - scale) * screenW / 2f).toInt().coerceAtLeast(0)
+        }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density + 0.5f).toInt()
     private val Float.dp: Float get() = this * resources.displayMetrics.density
@@ -72,19 +82,15 @@ class KeyboardView(
         allKeyContainer.addView(symbolsContainer)
         addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
-        // Build letters immediately; numbers/symbols built lazily on first switch
         buildLetterContent()
-
-        // Initialize key preview popup (single instance, reused for every keypress)
         setupPreview()
     }
 
     private fun applyBg() {
-        // Pure black in dark mode, light gray in light mode
         setBackgroundColor(if (isDark) 0xFF000000.toInt() else 0xFFD1D5DB.toInt())
     }
 
-    // ── Key preview (GBoard-style popup above pressed letter) ──────────────
+    // ── Key preview ────────────────────────────────────────────────────────
 
     private fun setupPreview() {
         previewLabel = TextView(context).apply {
@@ -94,7 +100,7 @@ class KeyboardView(
             setTextColor(if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt())
             val bg = GradientDrawable().apply {
                 setColor(if (isDark) 0xFF4A4A4A.toInt() else 0xFFFFFFFF.toInt())
-                cornerRadius = 12f.dp
+                cornerRadius = 10f.dp
             }
             background = bg
             setPadding(18.dp, 8.dp, 18.dp, 8.dp)
@@ -112,8 +118,6 @@ class KeyboardView(
 
     fun showKeyPreview(anchor: View, char: String) {
         if (char.isBlank() || !isAttachedToWindow) return
-
-        // Always dismiss first so we can re-show at the correct position and size
         hideKeyPreview()
 
         previewLabel.text = char
@@ -129,19 +133,16 @@ class KeyboardView(
         val pw = previewLabel.measuredWidth
         val ph = previewLabel.measuredHeight
 
-        val loc = IntArray(2)
-        anchor.getLocationOnScreen(loc)
-        val screenW = resources.displayMetrics.widthPixels
-        val x = (loc[0] + anchor.width / 2 - pw / 2).coerceIn(0, (screenW - pw).coerceAtLeast(0))
-        val y = (loc[1] - ph - 6.dp).coerceAtLeast(0)
-
         previewLabel.animate().cancel()
-        previewLabel.scaleX = 1.2f
-        previewLabel.scaleY = 1.2f
+        previewLabel.scaleX = 1.15f
+        previewLabel.scaleY = 1.15f
         previewLabel.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
 
+        val xOff = anchor.width / 2 - pw / 2
+        val yOff = -(ph + anchor.height + 4.dp)
+
         try {
-            previewPopup.showAtLocation(this, Gravity.NO_GRAVITY, x, y)
+            previewPopup.showAsDropDown(anchor, xOff, yOff)
             previewShowing = true
         } catch (_: Exception) { }
     }
@@ -156,74 +157,266 @@ class KeyboardView(
     // ── Toolbar ────────────────────────────────────────────────────────────
 
     private fun buildToolbar(): LinearLayout {
+        val iconTint = if (isDark) 0xFFBDBDBD.toInt() else 0xFF444444.toInt()
         return LinearLayout(context).apply {
             orientation = HORIZONTAL
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 44.dp)
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(if (isDark) 0xFF111111.toInt() else 0xFFC8CDD4.toInt())
 
-            // Left smart group — 3 buttons share the space equally
-            // If one button is added or removed, the others redistribute automatically
             val leftGroup = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
             }
             leftGroup.addView(
-                toolbarBtn("📋") { showClipboard() },
+                toolbarIconBtn(R.drawable.ic_clipboard, iconTint) { showClipboard() },
                 LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
             )
             leftGroup.addView(
-                toolbarBtn("😊") { showEmojiPanel() },
+                toolbarIconBtn(R.drawable.ic_emoji, iconTint) { showEmojiPanel() },
                 LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
             )
             leftGroup.addView(
-                toolbarBtn("⚙") { listener.onOpenSettings() },
+                toolbarIconBtn(R.drawable.ic_settings, iconTint) { showSettingsPanel() },
                 LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
             )
             addView(leftGroup)
 
-            // Fixed dismiss button — NOT smart-placed, always at the right edge
             addView(
-                toolbarBtn("▼") { listener.onDismissKeyboard() },
+                toolbarIconBtn(R.drawable.ic_dismiss, iconTint) { listener.onDismissKeyboard() },
                 LayoutParams(52.dp, LayoutParams.MATCH_PARENT)
             )
         }
     }
 
-    private fun toolbarBtn(icon: String, onClick: () -> Unit): TextView {
-        return TextView(context).apply {
-            text = icon
-            textSize = 18f
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            setTextColor(if (isDark) 0xFFBDBDBD.toInt() else 0xFF444444.toInt())
-            gravity = Gravity.CENTER
+    private fun toolbarIconBtn(resId: Int, tint: Int, onClick: () -> Unit): ImageView {
+        return ImageView(context).apply {
+            val d = context.getDrawable(resId)?.mutate()
+            d?.setTint(tint)
+            setImageDrawable(d)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
         }
     }
 
+    // ── Inline settings panel ──────────────────────────────────────────────
+
+    private fun buildSettingsPanel(): LinearLayout {
+        val bgColor = if (isDark) 0xFF111111.toInt() else 0xFFD1D5DB.toInt()
+        val textColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
+        val hintColor = if (isDark) 0xFF888888.toInt() else 0xFF666666.toInt()
+
+        fun sectionLabel(text: String) = TextView(context).apply {
+            this.text = text
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(hintColor)
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = 8.dp; bottomMargin = 4.dp
+            }
+        }
+
+        fun rowLabel(text: String) = TextView(context).apply {
+            this.text = text
+            textSize = 13f
+            setTextColor(textColor)
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        fun makeSeekRow(label: String, max: Int, progress: Int, onChanged: (Int) -> Unit): LinearLayout {
+            return LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = 6.dp
+                }
+                addView(rowLabel(label))
+                addView(SeekBar(context).apply {
+                    this.max = max
+                    this.progress = progress
+                    layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 2f)
+                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                            if (fromUser) onChanged(p)
+                        }
+                        override fun onStartTrackingTouch(sb: SeekBar) {}
+                        override fun onStopTrackingTouch(sb: SeekBar) {}
+                    })
+                })
+            }
+        }
+
+        val heightProgress = ((PrefsManager.getKeyHeightScale(context) - 0.8f) / 0.1f + 0.5f).toInt().coerceIn(0, 5)
+        val widthProgress = ((PrefsManager.getKeyWidthScale(context) - 0.7f) / 0.05f + 0.5f).toInt().coerceIn(0, 6)
+
+        return LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(bgColor)
+            setPadding(12.dp, 8.dp, 12.dp, 8.dp)
+            visibility = GONE
+
+            // Header row: title + Done button
+            addView(LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = 8.dp
+                }
+                addView(TextView(context).apply {
+                    text = "Keyboard Settings"
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(textColor)
+                    layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(TextView(context).apply {
+                    text = "Done"
+                    textSize = 13f
+                    setTextColor(accentColor)
+                    setPadding(12.dp, 4.dp, 4.dp, 4.dp)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { hideSettingsPanel() }
+                })
+            })
+
+            addView(sectionLabel("SIZE"))
+            addView(makeSeekRow("Height", 5, heightProgress) { p ->
+                PrefsManager.setKeyHeightScale(context, 0.8f + p * 0.1f)
+            })
+            addView(makeSeekRow("Width", 6, widthProgress) { p ->
+                PrefsManager.setKeyWidthScale(context, 0.7f + p * 0.05f)
+            })
+
+            addView(sectionLabel("THEME"))
+
+            // Color chips row
+            val chipRow = LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = 8.dp
+                }
+            }
+            val chipSize = 32.dp
+            val chipMargin = 8.dp
+            val currentTheme = PrefsManager.getColorTheme(context)
+            PrefsManager.COLOR_THEMES.forEach { theme ->
+                chipRow.addView(View(context).apply {
+                    val d = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(PrefsManager.accentColorFor(theme))
+                        if (theme == currentTheme) setStroke(2.dp, 0xFFFFFFFF.toInt())
+                    }
+                    background = d
+                    layoutParams = LayoutParams(chipSize, chipSize).apply { marginEnd = chipMargin }
+                    isClickable = true
+                    setOnClickListener {
+                        PrefsManager.setColorTheme(context, theme)
+                        // Rebuild to reflect new accent
+                        hideSettingsPanel()
+                        refreshTheme()
+                    }
+                })
+            }
+            addView(chipRow)
+
+            addView(sectionLabel("OPTIONS"))
+
+            // Number row toggle
+            addView(LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = 4.dp
+                }
+                addView(rowLabel("Dedicated number row"))
+                addView(Switch(context).apply {
+                    isChecked = PrefsManager.isNumberRowEnabled(context)
+                    setOnCheckedChangeListener { _, checked ->
+                        PrefsManager.setNumberRowEnabled(context, checked)
+                        buildLetterContent()
+                        applyShiftToKeys()
+                    }
+                })
+            })
+
+            // Dark mode toggle
+            addView(LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                addView(rowLabel("Dark mode"))
+                addView(Switch(context).apply {
+                    isChecked = PrefsManager.isDarkMode(context)
+                    setOnCheckedChangeListener { _, checked ->
+                        PrefsManager.setDarkMode(context, checked)
+                        hideSettingsPanel()
+                        refreshTheme()
+                    }
+                })
+            })
+        }
+    }
+
+    fun showSettingsPanel() {
+        if (settingsShowing) return
+        if (settingsPanel == null) {
+            settingsPanel = buildSettingsPanel()
+            addView(settingsPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+        settingsPanel?.visibility = VISIBLE
+        allKeyContainer.visibility = GONE
+        settingsShowing = true
+    }
+
+    private fun hideSettingsPanel() {
+        settingsPanel?.visibility = GONE
+        allKeyContainer.visibility = VISIBLE
+        settingsShowing = false
+        // Rebuild rows so width/height changes take effect immediately
+        rebuildAll()
+    }
+
     // ── Theme refresh ──────────────────────────────────────────────────────
 
     fun refreshTheme() {
         hideKeyPreview()
+        settingsPanel = null
+        settingsShowing = false
         applyBg()
         removeAllViews()
         addView(buildToolbar())
 
-        // Rebuild all containers that were built
-        buildLetterContent()
-        if (numbersBuilt) buildNumberContent()
-        if (symbolsBuilt) buildSymbolContent()
+        letterKeyRows.clear()
+        numberKeyRows.clear()
+        symbolKeyRows.clear()
+        lettersContainer.removeAllViews()
+        numbersContainer.removeAllViews()
+        symbolsContainer.removeAllViews()
+        numbersBuilt = false
+        symbolsBuilt = false
 
-        // Restore mode visibility
+        buildLetterContent()
+
         lettersContainer.visibility = if (mode == Mode.LETTERS) VISIBLE else GONE
         numbersContainer.visibility = if (mode == Mode.NUMBERS) VISIBLE else GONE
         symbolsContainer.visibility = if (mode == Mode.SYMBOLS) VISIBLE else GONE
 
-        addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        // Rebuild numbers/symbols if they were visible before
+        if (mode == Mode.NUMBERS) buildNumberContent()
+        if (mode == Mode.SYMBOLS) buildSymbolContent()
 
+        addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         setupPreview()
+        applyShiftToKeys()
+    }
+
+    private fun rebuildAll() {
+        buildLetterContent()
+        if (numbersBuilt) buildNumberContent()
+        if (symbolsBuilt) buildSymbolContent()
         applyShiftToKeys()
     }
 
@@ -259,10 +452,13 @@ class KeyboardView(
         val pw = PopupWindow(tv, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, false).apply {
             isOutsideTouchable = true
         }
-        val loc = IntArray(2)
-        getLocationOnScreen(loc)
+        tv.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val ph = tv.measuredHeight
         try {
-            pw.showAtLocation(this, Gravity.NO_GRAVITY, loc[0] + 8.dp, loc[1] - 60.dp)
+            pw.showAsDropDown(this, 8.dp, -(ph + 8.dp))
         } catch (_: Exception) { }
         postDelayed({ pw.dismiss() }, 3000)
     }
@@ -306,10 +502,8 @@ class KeyboardView(
         val pw = PopupWindow(scroll, resources.displayMetrics.widthPixels - 16.dp, 60.dp, false).apply {
             isOutsideTouchable = true
         }
-        val loc = IntArray(2)
-        getLocationOnScreen(loc)
         try {
-            pw.showAtLocation(this, Gravity.NO_GRAVITY, 8.dp, loc[1] - 72.dp)
+            pw.showAsDropDown(this, 8.dp, -72.dp)
         } catch (_: Exception) { }
     }
 
@@ -335,12 +529,17 @@ class KeyboardView(
         symbolsBuilt = true
     }
 
-    private fun buildRowsInto(container: LinearLayout, rows: List<List<KeyDef>>, keyRowList: MutableList<List<KeyView>>) {
+    private fun buildRowsInto(
+        container: LinearLayout,
+        rows: List<List<KeyDef>>,
+        keyRowList: MutableList<List<KeyView>>
+    ) {
+        val hp = rowHPad
         rows.forEach { rowDefs ->
             val rowView = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, keyHeightPx)
-                setPadding(4.dp, 4.dp, 4.dp, 4.dp)
+                setPadding(hp + 2.dp, 2.dp, hp + 2.dp, 2.dp)
                 clipChildren = false
                 clipToPadding = false
             }
@@ -348,7 +547,7 @@ class KeyboardView(
             val rowKeys = rowDefs.map { def ->
                 KeyView(context, def, listener).also { kv ->
                     rowView.addView(kv, LayoutParams(0, LayoutParams.MATCH_PARENT, def.widthWeight).apply {
-                        setMargins(2.dp, 0, 2.dp, 0)
+                        setMargins(1.dp, 0, 1.dp, 0)
                     })
                 }
             }
@@ -358,7 +557,6 @@ class KeyboardView(
     }
 
     fun switchMode(newMode: Mode) {
-        // Lazily build numbers/symbols on first switch — avoids tripling initial load time
         if (newMode == Mode.NUMBERS && !numbersBuilt) buildNumberContent()
         if (newMode == Mode.SYMBOLS && !symbolsBuilt) buildSymbolContent()
 

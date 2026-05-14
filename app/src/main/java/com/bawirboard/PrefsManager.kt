@@ -17,6 +17,9 @@ object PrefsManager {
     fun getKeyHeightScale(ctx: Context) = prefs(ctx).getFloat("key_height_scale", 1.0f)
     fun setKeyHeightScale(ctx: Context, v: Float) = prefs(ctx).edit().putFloat("key_height_scale", v).apply()
 
+    fun getKeyWidthScale(ctx: Context) = prefs(ctx).getFloat("key_width_scale", 1.0f)
+    fun setKeyWidthScale(ctx: Context, v: Float) = prefs(ctx).edit().putFloat("key_width_scale", v).apply()
+
     fun getColorTheme(ctx: Context) = prefs(ctx).getString("color_theme", "blue") ?: "blue"
     fun setColorTheme(ctx: Context, v: String) = prefs(ctx).edit().putString("color_theme", v).apply()
 

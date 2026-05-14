@@ -9,9 +9,10 @@ data class KeyDef(
     val shiftLabel: String = label.uppercase(),
     val type: KeyType = KeyType.LETTER,
     val widthWeight: Float = 1f,
-    val popupChars: List<String> = emptyList()
+    val popupChars: List<String> = emptyList(),
+    val popupCharsShiftedOverride: List<String>? = null
 ) {
-    val popupCharsShifted: List<String> = popupChars.map { it.uppercase() }
+    val popupCharsShifted: List<String> = popupCharsShiftedOverride ?: popupChars.map { it.uppercase() }
 }
 
 object KarakalpakLayout {
@@ -25,24 +26,24 @@ object KarakalpakLayout {
     )
 
     val LETTERS_ROW1 = listOf(
-        KeyDef("q", "Q", popupChars = listOf("1")),
-        KeyDef("w", "W", popupChars = listOf("2")),
-        KeyDef("e", "E", popupChars = listOf("3")),
-        KeyDef("r", "R", popupChars = listOf("4")),
-        KeyDef("t", "T", popupChars = listOf("5")),
-        KeyDef("y", "Y", popupChars = listOf("6")),
-        KeyDef("u", "U", popupChars = listOf("ú", "ü", "7")),
-        KeyDef("i", "I", popupChars = listOf("8")),
-        KeyDef("o", "O", popupChars = listOf("ó", "ö", "9")),
-        KeyDef("p", "P", popupChars = listOf("0"))
+        KeyDef("q", "Q"),
+        KeyDef("w", "W"),
+        KeyDef("e", "E"),
+        KeyDef("r", "R"),
+        KeyDef("t", "T"),
+        KeyDef("y", "Y"),
+        KeyDef("u", "U", popupChars = listOf("ú"), popupCharsShiftedOverride = listOf("Ú")),
+        KeyDef("i", "I", popupChars = listOf("ı"), popupCharsShiftedOverride = listOf("Í")),
+        KeyDef("o", "O", popupChars = listOf("ó"), popupCharsShiftedOverride = listOf("Ó")),
+        KeyDef("p", "P")
     )
 
     val LETTERS_ROW2 = listOf(
-        KeyDef("a", "A", popupChars = listOf("á", "ä")),
+        KeyDef("a", "A", popupChars = listOf("á"), popupCharsShiftedOverride = listOf("Á")),
         KeyDef("s", "S"),
         KeyDef("d", "D"),
         KeyDef("f", "F"),
-        KeyDef("g", "G", popupChars = listOf("ǵ")),
+        KeyDef("g", "G", popupChars = listOf("ǵ"), popupCharsShiftedOverride = listOf("Ǵ")),
         KeyDef("h", "H"),
         KeyDef("j", "J"),
         KeyDef("k", "K"),
@@ -56,7 +57,7 @@ object KarakalpakLayout {
         KeyDef("c", "C"),
         KeyDef("v", "V"),
         KeyDef("b", "B"),
-        KeyDef("n", "N", popupChars = listOf("ń")),
+        KeyDef("n", "N", popupChars = listOf("ń"), popupCharsShiftedOverride = listOf("Ń")),
         KeyDef("m", "M"),
         KeyDef("⌫", type = KeyType.DELETE, widthWeight = 1.5f)
     )

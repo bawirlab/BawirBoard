@@ -1,6 +1,5 @@
 package com.bawirboard
 
-import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -14,13 +13,14 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private var lastShiftTime = 0L
     private val doubleTapThreshold = 400L
 
-    // Track number-row setting to detect changes while settings screen is open
     private var lastNumberRowSetting = false
+    private var lastDarkMode = true
 
     override fun onCreateInputView(): View {
         val kb = KeyboardView(this, this)
         keyboardView = kb
         lastNumberRowSetting = PrefsManager.isNumberRowEnabled(this)
+        lastDarkMode = PrefsManager.isDarkMode(this)
         return kb
     }
 
@@ -36,10 +36,16 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onWindowShown() {
         super.onWindowShown()
-        // Rebuild letter layout if number-row setting changed while in SettingsActivity
-        val current = PrefsManager.isNumberRowEnabled(this)
-        if (current != lastNumberRowSetting) {
-            lastNumberRowSetting = current
+        val currentDark = PrefsManager.isDarkMode(this)
+        val currentNumberRow = PrefsManager.isNumberRowEnabled(this)
+
+        if (currentDark != lastDarkMode) {
+            // Theme changed — full rebuild required so all mode containers get correct colors
+            lastDarkMode = currentDark
+            lastNumberRowSetting = currentNumberRow
+            keyboardView?.refreshTheme()
+        } else if (currentNumberRow != lastNumberRowSetting) {
+            lastNumberRowSetting = currentNumberRow
             keyboardView?.rebuildLetterLayout()
         }
     }
@@ -114,10 +120,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     }
 
     override fun onOpenSettings() {
-        val intent = Intent(this, SettingsActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
+        // No-op: settings are handled inline via showSettingsPanel() in KeyboardView toolbar
     }
 
     override fun onDismissKeyboard() {
