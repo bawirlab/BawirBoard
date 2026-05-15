@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Caps Lock: filled arrow + underline bar -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Filled arrow (same as ic_shift_filled) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M13,18V13H17L12,7L7,13H11V18H13Z" />
+    <!-- Underline bar to indicate caps lock -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M7,20H17V21.5H7Z" />
+</vector>

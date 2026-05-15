@@ -2,6 +2,7 @@ package com.bawirboard
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
@@ -48,6 +49,15 @@ class KeyboardView(
     // Inline settings panel (built lazily)
     private var settingsPanel: LinearLayout? = null
     private var settingsShowing = false
+
+    // Inline emoji panel (built lazily)
+    private var emojiPanel: LinearLayout? = null
+    private var emojiShowing = false
+    private val recentEmojis = mutableListOf<String>()
+
+    // Inline clipboard panel
+    private var clipboardPanel: LinearLayout? = null
+    private var clipboardShowing = false
 
     // Key preview popup
     private lateinit var previewLabel: TextView
@@ -361,7 +371,12 @@ class KeyboardView(
     }
 
     fun showSettingsPanel() {
-        if (settingsShowing) return
+        if (settingsShowing) {
+            hideSettingsPanel()
+            return
+        }
+        hideEmojiPanel()
+        hideClipboardPanel()
         if (settingsPanel == null) {
             settingsPanel = buildSettingsPanel()
             addView(settingsPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
@@ -375,7 +390,6 @@ class KeyboardView(
         settingsPanel?.visibility = GONE
         allKeyContainer.visibility = VISIBLE
         settingsShowing = false
-        // Rebuild rows so width/height changes take effect immediately
         rebuildAll()
     }
 
@@ -385,6 +399,10 @@ class KeyboardView(
         hideKeyPreview()
         settingsPanel = null
         settingsShowing = false
+        emojiPanel = null
+        emojiShowing = false
+        clipboardPanel = null
+        clipboardShowing = false
         applyBg()
         removeAllViews()
         addView(buildToolbar())
@@ -425,86 +443,417 @@ class KeyboardView(
         applyShiftToKeys()
     }
 
-    // ── Clipboard popup ────────────────────────────────────────────────────
+    // ── Clipboard panel ────────────────────────────────────────────────────
 
     private fun showClipboard() {
+        if (clipboardShowing) {
+            hideClipboardPanel()
+            return
+        }
+        hideSettingsPanel()
+        hideEmojiPanel()
+        clipboardPanel = buildClipboardPanel()
+        addView(clipboardPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        allKeyContainer.visibility = GONE
+        clipboardShowing = true
+    }
+
+    private fun hideClipboardPanel() {
+        clipboardPanel?.let { removeView(it) }
+        clipboardPanel = null
+        allKeyContainer.visibility = VISIBLE
+        clipboardShowing = false
+    }
+
+    private fun buildClipboardPanel(): LinearLayout {
+        val bgColor = if (isDark) 0xFF111111.toInt() else 0xFFD1D5DB.toInt()
+        val textColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
+        val cardBg = if (isDark) 0xFF2A2A2A.toInt() else 0xFFFFFFFF.toInt()
+
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = cm.primaryClip?.getItemAt(0)?.text?.toString()?.take(200)
-            ?: "No clipboard content"
+        val clipItems = mutableListOf<String>()
+        val clip = cm.primaryClip
+        if (clip != null) {
+            for (i in 0 until clip.itemCount) {
+                val t = clip.getItemAt(i)?.text?.toString()
+                if (!t.isNullOrBlank()) clipItems.add(t)
+            }
+        }
 
-        val tv = TextView(context).apply {
-            this.text = text
+        val selectedIndices = mutableSetOf<Int>()
+        val cardViews = mutableListOf<View>()
+
+        val panel = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(bgColor)
+            setPadding(10.dp, 8.dp, 10.dp, 8.dp)
+        }
+
+        // Header
+        val headerRow = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 8.dp
+            }
+        }
+        headerRow.addView(TextView(context).apply {
+            text = "Clipboard"
             textSize = 14f
-            setTextColor(if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt())
-            val d = GradientDrawable().apply {
-                setColor(if (isDark) 0xFF333333.toInt() else 0xFFF0F0F0.toInt())
-                cornerRadius = 10f.dp
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(textColor)
+            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val deleteBtn = TextView(context).apply {
+            text = "Delete"
+            textSize = 13f
+            setTextColor(0xFFF44336.toInt())
+            setPadding(12.dp, 4.dp, 4.dp, 4.dp)
+            isClickable = true; isFocusable = true
+        }
+        headerRow.addView(TextView(context).apply {
+            text = "Done"
+            textSize = 13f
+            setTextColor(accentColor)
+            setPadding(12.dp, 4.dp, 4.dp, 4.dp)
+            isClickable = true; isFocusable = true
+            setOnClickListener { hideClipboardPanel() }
+        })
+        headerRow.addView(deleteBtn)
+        panel.addView(headerRow)
+
+        // Action bar (visible on selection)
+        val actionBar = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            visibility = GONE
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 6.dp
             }
-            background = d
-            setPadding(16.dp, 12.dp, 16.dp, 12.dp)
-            maxWidth = (resources.displayMetrics.widthPixels * 0.8f).toInt()
-            isClickable = true
-            setOnClickListener {
-                if (text != "No clipboard content") listener.onKeyText(text)
+        }
+        val pinBtn = TextView(context).apply {
+            text = "Pin Selected"
+            textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(12.dp, 6.dp, 12.dp, 6.dp)
+            background = GradientDrawable().apply { setColor(accentColor); cornerRadius = 8f.dp }
+            isClickable = true; isFocusable = true
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { marginEnd = 12.dp }
+        }
+        val bulkDeleteBtn = TextView(context).apply {
+            text = "Delete Selected"
+            textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(12.dp, 6.dp, 12.dp, 6.dp)
+            background = GradientDrawable().apply { setColor(0xFFF44336.toInt()); cornerRadius = 8f.dp }
+            isClickable = true; isFocusable = true
+        }
+        actionBar.addView(pinBtn)
+        actionBar.addView(bulkDeleteBtn)
+        panel.addView(actionBar)
+
+        val scrollView = ScrollView(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, (120 * resources.displayMetrics.density).toInt())
+            isVerticalScrollBarEnabled = false
+        }
+        val gridContainer = LinearLayout(context).apply { orientation = VERTICAL }
+
+        fun updateSelection() {
+            cardViews.forEachIndexed { idx, card ->
+                val selected = idx in selectedIndices
+                card.background = GradientDrawable().apply {
+                    setColor(if (selected)
+                        Color.argb(60, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
+                    else cardBg)
+                    cornerRadius = 8f.dp
+                    if (selected) setStroke(2.dp, accentColor)
+                }
+            }
+            actionBar.visibility = if (selectedIndices.isEmpty()) GONE else VISIBLE
+        }
+
+        if (clipItems.isEmpty()) {
+            gridContainer.addView(TextView(context).apply {
+                text = "No clipboard items"
+                textSize = 13f
+                setTextColor(if (isDark) 0xFF888888.toInt() else 0xFF666666.toInt())
+                gravity = Gravity.CENTER
+                setPadding(0, 20.dp, 0, 20.dp)
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            })
+        } else {
+            var rowLayout: LinearLayout? = null
+            clipItems.forEachIndexed { idx, item ->
+                if (idx % 2 == 0) {
+                    rowLayout = LinearLayout(context).apply {
+                        orientation = HORIZONTAL
+                        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                            bottomMargin = 6.dp
+                        }
+                    }
+                    gridContainer.addView(rowLayout)
+                }
+                val card = LinearLayout(context).apply {
+                    orientation = VERTICAL
+                    background = GradientDrawable().apply { setColor(cardBg); cornerRadius = 8f.dp }
+                    layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+                        if (idx % 2 == 0) marginEnd = 4.dp else marginStart = 4.dp
+                    }
+                    setPadding(8.dp, 6.dp, 8.dp, 6.dp)
+                    isClickable = true; isFocusable = true
+                    setOnClickListener {
+                        if (idx in selectedIndices) selectedIndices.remove(idx) else selectedIndices.add(idx)
+                        updateSelection()
+                    }
+                    setOnLongClickListener {
+                        listener.onKeyText(item)
+                        hideClipboardPanel()
+                        true
+                    }
+                }
+                card.addView(TextView(context).apply {
+                    text = item.take(60)
+                    textSize = 11f
+                    setTextColor(textColor)
+                    maxLines = 3
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                cardViews.add(card)
+                rowLayout?.addView(card)
+            }
+            if (clipItems.size % 2 == 1) {
+                rowLayout?.addView(View(context).apply { layoutParams = LayoutParams(0, 1, 1f) })
             }
         }
 
-        val pw = PopupWindow(tv, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, false).apply {
-            isOutsideTouchable = true
+        scrollView.addView(gridContainer)
+        panel.addView(scrollView)
+
+        fun showDeleteAllDialog() {
+            android.app.AlertDialog.Builder(context)
+                .setTitle("Delete All")
+                .setMessage("Clear entire clipboard history?")
+                .setPositiveButton("Delete All") { _, _ ->
+                    try {
+                        val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipMgr.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
+                    } catch (_: Exception) {}
+                    hideClipboardPanel()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
-        tv.measure(
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        val ph = tv.measuredHeight
-        try {
-            pw.showAsDropDown(this, 8.dp, -(ph + 8.dp))
-        } catch (_: Exception) { }
-        postDelayed({ pw.dismiss() }, 3000)
+
+        deleteBtn.setOnClickListener { showDeleteAllDialog() }
+        bulkDeleteBtn.setOnClickListener { showDeleteAllDialog() }
+        pinBtn.setOnClickListener {
+            val pinned = selectedIndices.sorted().mapNotNull { clipItems.getOrNull(it) }.joinToString("\n")
+            if (pinned.isNotEmpty()) listener.onKeyText(pinned)
+            hideClipboardPanel()
+        }
+
+        return panel
     }
 
     // ── Emoji panel ────────────────────────────────────────────────────────
 
     private fun showEmojiPanel() {
-        val emojis = listOf(
-            "😀","😂","🥲","😍","🤩","😎","🥳","🤔","😴","🙃",
-            "😭","😤","😡","🥺","😊","🤗","😏","😒","🙄","😬",
-            "👍","👎","👏","🙌","🤝","🙏","💪","✌","👀","❤",
-            "🔥","💯","✅","❌","🎉","🎊","⭐","💡","💬","📱",
-            "😘","🤣","😅","😆","🤪","🤯","🥰","😇","🤫","🧐"
-        )
+        if (emojiShowing) {
+            hideEmojiPanel()
+            return
+        }
+        hideSettingsPanel()
+        hideClipboardPanel()
+        removeView(emojiPanel)
+        emojiPanel = buildEmojiPanel()
+        addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        allKeyContainer.visibility = GONE
+        emojiShowing = true
+    }
 
-        val scroll = HorizontalScrollView(context).apply {
+    private fun hideEmojiPanel() {
+        emojiPanel?.let { removeView(it) }
+        emojiPanel = null
+        allKeyContainer.visibility = VISIBLE
+        emojiShowing = false
+    }
+
+    private fun buildEmojiPanel(): LinearLayout {
+        val bgColor = if (isDark) 0xFF111111.toInt() else 0xFFD1D5DB.toInt()
+        val tabActiveBg = if (isDark) 0xFF333333.toInt() else 0xFFBBBBBB.toInt()
+
+        data class EmojiCategory(val icon: String, val emojis: List<String>)
+
+        val categories = buildList {
+            if (recentEmojis.isNotEmpty()) add(EmojiCategory("🕑", recentEmojis.toList()))
+            add(EmojiCategory("😀", listOf(
+                "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃",
+                "😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙",
+                "🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫",
+                "🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬",
+                "🤥","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮",
+                "🤧","🥵","🥶","🥴","😵","😡","🤠","🥸","😎","🤓",
+                "🤐","😕","😟","🙁","☹","😮","😯","😲","😳","🥺",
+                "😦","😧","😨","😰","😥","😢","😭","😱","😖","😣",
+                "😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈"
+            )))
+            add(EmojiCategory("👋", listOf(
+                "👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌","🤞",
+                "🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝","👍",
+                "👎","✊","👊","🤛","🤜","👏","🙌","🪶","👐","🤲",
+                "🤝","🙏","✍","💅","🤳","💪","🦾","🦿","🦵","🦶",
+                "👂","🦻","👃","🪷","🪸","🦷","🦴","🦳","👀","👁",
+                "👅","👄","💋","🪶","👶","🧒","👦","👧","🧑","👱"
+            )))
+            add(EmojiCategory("🐶", listOf(
+                "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯",
+                "🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧",
+                "🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄",
+                "🐝","\uD83Eꪱ","🐛","🦋","🐌","🐞","🐜","🦟","🦗","\uD83Eꪳ",
+                "🕷","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐",
+                "🦞","🦟","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊"
+            )))
+            add(EmojiCategory("🍕", listOf(
+                "🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐",
+                "🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑",
+                "🥦","🤬","🥒","🌶","🫑","🧄","🧅","🥔","🍠","🥐",
+                "🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧨","🥞","🦷",
+                "🥓","🍖","🍗","🌭","🍔","🍟","🍕","🪳","🥪","🥙",
+                "🥗","🦸","🌮","🌯","🪴","🍱","🍘","🍙","🍚","🍛"
+            )))
+            add(EmojiCategory("⚽", listOf(
+                "⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱",
+                "🏓","🏸","🏒","🏑","🥍","🏏","\uD83E\uDEƒ","🫕","⛳","🪱",
+                "🏹","🎣","🤿","🥊","🥋","🎽","🛹","🚼","🛷","⛸",
+                "🥌","🎿","⛷","🏂","🫂","🏋","🤼","🤸","⛹","🤺",
+                "🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆"
+            )))
+            add(EmojiCategory("✈️", listOf(
+                "🚗","🚕","🚙","🚌","🚎","🏎","🚓","🚑","🚒","🚐",
+                "🚛","🚴","🛴","🚲","🛵","🛍","🚺","🚅","🚄","🚈",
+                "🚂","🚆","🚇","🚊","🚉","✈","🛫","🛬","🪼","💺",
+                "🛰","🚀","🛸","🚁","🛶","⛵","🚤","🛥","🛳","⛴",
+                "🚢","⚓","🧭","🧿","🧱","🏕","🏖","🏜","🏝","🏞"
+            )))
+            add(EmojiCategory("💡", listOf(
+                "⌚","📱","📲","💻","⌨","🖵","🖶","🖱","🖲","🖳",
+                "💽","💾","💿","📀","📼","📷","📸","📹","🍚","⌛",
+                "⏱","⏲","⏰","🕰","⌚","⏳","📡","🔋","🪫","🔌",
+                "💡","🔦","🕯","🤔","🛢","💸","💵","💴","💶","💷",
+                "🪙","💳","🪙","💰","💴","💵","💶","💷","🏷","📫"
+            )))
+            add(EmojiCategory("❤️", listOf(
+                "❤","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔",
+                "❣","💕","💞","💓","💗","💖","💘","💝","💟","☮",
+                "✝","☪","🕉","☸","✡","🔯","🕎","☯","☦","🛐",
+                "⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐",
+                "♑","♒","♓","🆔","⚕","♻","⛜","🔱","🔰","⭕",
+                "✅","☑","✔","❎","🔲","🔳","⬜","⬛","◼","◻"
+            )))
+            add(EmojiCategory("🏱", listOf(
+                "🏱","🚩","🎌","🏴","🏳",
+                "🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇩🇪",
+                "🇫🇷","🇪🇸","🇮🇹","🇯🇵","🇰🇷",
+                "🇨🇳","🇷🇺","🇧🇷","🇮🇳","🇲🇽",
+                "🇸🇦","🇦🇪","🇹🇷","🇵🇰","🇺🇿",
+                "🇰🇿","🇹🇲","🇦🇲","🇬🇪","🇦🇷"
+            )))
+        }
+
+        val panel = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(bgColor)
+        }
+
+        val contentScroll = ScrollView(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, (160 * resources.displayMetrics.density).toInt())
+            isVerticalScrollBarEnabled = false
+        }
+        val contentGrid = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setPadding(6.dp, 4.dp, 6.dp, 4.dp)
+        }
+        contentScroll.addView(contentGrid)
+
+        val tabScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 38.dp)
+            setBackgroundColor(if (isDark) 0xFF1A1A1A.toInt() else 0xFFC0C5CC.toInt())
         }
-        val row = LinearLayout(context).apply {
+        val tabRow = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            setPadding(8.dp, 8.dp, 8.dp, 8.dp)
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(4.dp, 2.dp, 4.dp, 2.dp)
         }
-        emojis.forEach { emoji ->
-            row.addView(TextView(context).apply {
-                text = emoji
-                textSize = 26f
+        val tabViews = mutableListOf<TextView>()
+
+        fun loadCategory(idx: Int) {
+            tabViews.forEachIndexed { i, tv ->
+                tv.setBackgroundColor(if (i == idx) tabActiveBg else Color.TRANSPARENT)
+            }
+            contentGrid.removeAllViews()
+            val emojis = categories[idx].emojis
+            val perRow = 8
+            var rowL: LinearLayout? = null
+            emojis.forEachIndexed { i, emoji ->
+                if (i % perRow == 0) {
+                    rowL = LinearLayout(context).apply {
+                        orientation = HORIZONTAL
+                        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                    }
+                    contentGrid.addView(rowL)
+                }
+                rowL?.addView(TextView(context).apply {
+                    text = emoji
+                    textSize = 22f
+                    gravity = Gravity.CENTER
+                    layoutParams = LayoutParams(0, 40.dp, 1f)
+                    isClickable = true
+                    setOnClickListener {
+                        listener.onKeyText(emoji)
+                        recentEmojis.remove(emoji)
+                        recentEmojis.add(0, emoji)
+                        if (recentEmojis.size > 24) recentEmojis.removeAt(recentEmojis.size - 1)
+                    }
+                })
+            }
+        }
+
+        categories.forEachIndexed { idx, cat ->
+            val tab = TextView(context).apply {
+                text = cat.icon
+                textSize = 18f
                 gravity = Gravity.CENTER
-                val s = 44.dp
-                layoutParams = LayoutParams(s, s)
-                isClickable = true
-                setOnClickListener { listener.onKeyText(emoji) }
+                val pad = 6.dp
+                setPadding(pad, pad, pad, pad)
+                layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+                isClickable = true; isFocusable = true
+                setOnClickListener { loadCategory(idx) }
+            }
+            tabViews.add(tab)
+            tabRow.addView(tab)
+        }
+
+        tabScroll.addView(tabRow)
+        panel.addView(tabScroll)
+        panel.addView(contentScroll)
+
+        panel.addView(LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.END
+            setBackgroundColor(if (isDark) 0xFF1A1A1A.toInt() else 0xFFC0C5CC.toInt())
+            addView(TextView(context).apply {
+                text = "Done"
+                textSize = 13f
+                setTextColor(accentColor)
+                setPadding(12.dp, 8.dp, 12.dp, 8.dp)
+                isClickable = true; isFocusable = true
+                setOnClickListener { hideEmojiPanel() }
             })
-        }
-        scroll.addView(row)
+        })
 
-        val bgColor = if (isDark) 0xFF2D2D2D.toInt() else 0xFFF5F5F5.toInt()
-        val d = GradientDrawable().apply { setColor(bgColor); cornerRadius = 12f.dp }
-        scroll.background = d
-
-        val pw = PopupWindow(scroll, resources.displayMetrics.widthPixels - 16.dp, 60.dp, false).apply {
-            isOutsideTouchable = true
-        }
-        try {
-            pw.showAsDropDown(this, 8.dp, -72.dp)
-        } catch (_: Exception) { }
+        loadCategory(0)
+        return panel
     }
 
     // ── Key rendering ──────────────────────────────────────────────────────

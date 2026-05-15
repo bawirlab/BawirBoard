@@ -2,6 +2,7 @@ package com.bawirboard
 
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
+import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -74,15 +75,16 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onKeyEnter() {
         val ic = currentInputConnection ?: return
-        val imeAction = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
-            ?: EditorInfo.IME_ACTION_NONE
+        val ei = currentInputEditorInfo
+        val imeAction = (ei?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
+        val isMultiLine = (ei?.inputType ?: 0) and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
+        val noEnterAction = (ei?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
 
-        if (imeAction != EditorInfo.IME_ACTION_NONE &&
-            imeAction != EditorInfo.IME_ACTION_UNSPECIFIED
-        ) {
-            ic.performEditorAction(imeAction)
-        } else {
-            sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+        when {
+            isMultiLine || noEnterAction -> ic.commitText("\n", 1)
+            imeAction != EditorInfo.IME_ACTION_NONE &&
+            imeAction != EditorInfo.IME_ACTION_UNSPECIFIED -> ic.performEditorAction(imeAction)
+            else -> ic.commitText("\n", 1)
         }
     }
 
