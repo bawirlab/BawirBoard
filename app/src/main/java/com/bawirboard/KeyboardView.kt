@@ -26,6 +26,7 @@ class KeyboardView(
         fun onDismissKeyboard()
         fun onShowKeyPreview(anchor: View, char: String)
         fun onHideKeyPreview()
+        fun onSuggestionTapped(word: String)
     }
 
     enum class Mode { LETTERS, NUMBERS, SYMBOLS }
@@ -59,6 +60,11 @@ class KeyboardView(
     private var clipboardPanel: LinearLayout? = null
     private var clipboardShowing = false
 
+    // Suggestion strip
+    private lateinit var suggestionBar: LinearLayout
+    private val suggestionChips = arrayOfNulls<TextView>(3)
+    private val currentSuggestions = mutableListOf<String>()
+
     // Key preview popup
     private lateinit var previewLabel: TextView
     private lateinit var previewPopup: PopupWindow
@@ -86,6 +92,8 @@ class KeyboardView(
         applyBg()
 
         addView(buildToolbar())
+        suggestionBar = buildSuggestionBar()
+        addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
 
         allKeyContainer.addView(lettersContainer)
         allKeyContainer.addView(numbersContainer)
@@ -161,6 +169,62 @@ class KeyboardView(
         if (previewShowing) {
             previewPopup.dismiss()
             previewShowing = false
+        }
+    }
+
+    // ── Suggestion strip ───────────────────────────────────────────────────
+
+    private fun buildSuggestionBar(): LinearLayout {
+        val barBg = if (isDark) 0xFF111111.toInt() else 0xFFC8CDD4.toInt()
+        val chipColor = if (isDark) 0xFFCCCCCC.toInt() else 0xFF444444.toInt()
+        val divColor = if (isDark) 0xFF333333.toInt() else 0xFF9EA5AE.toInt()
+
+        return LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            setBackgroundColor(barBg)
+            gravity = Gravity.CENTER_VERTICAL
+
+            for (i in 0..2) {
+                if (i > 0) {
+                    addView(View(context).apply {
+                        setBackgroundColor(divColor)
+                        layoutParams = LayoutParams(1, 20.dp)
+                    })
+                }
+                val chip = TextView(context).apply {
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setTextColor(chipColor)
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(8.dp, 0, 8.dp, 0)
+                    isClickable = true
+                    isFocusable = true
+                    visibility = INVISIBLE
+                    layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                    setOnClickListener {
+                        val word = text?.toString() ?: return@setOnClickListener
+                        if (word.isNotEmpty()) listener.onSuggestionTapped(word)
+                    }
+                }
+                suggestionChips[i] = chip
+                addView(chip)
+            }
+        }
+    }
+
+    fun showSuggestions(words: List<String>) {
+        currentSuggestions.clear()
+        currentSuggestions.addAll(words)
+        for (i in 0..2) {
+            val chip = suggestionChips[i] ?: continue
+            if (i < words.size) {
+                chip.text = words[i]
+                chip.visibility = VISIBLE
+            } else {
+                chip.text = ""
+                chip.visibility = INVISIBLE
+            }
         }
     }
 
@@ -384,12 +448,14 @@ class KeyboardView(
         settingsPanel?.visibility = VISIBLE
         allKeyContainer.visibility = GONE
         settingsShowing = true
+        suggestionBar.visibility = GONE
     }
 
     private fun hideSettingsPanel() {
         settingsPanel?.visibility = GONE
         allKeyContainer.visibility = VISIBLE
         settingsShowing = false
+        if (!emojiShowing && !clipboardShowing) suggestionBar.visibility = VISIBLE
         rebuildAll()
     }
 
@@ -406,6 +472,8 @@ class KeyboardView(
         applyBg()
         removeAllViews()
         addView(buildToolbar())
+        suggestionBar = buildSuggestionBar()
+        addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
 
         letterKeyRows.clear()
         numberKeyRows.clear()
@@ -429,6 +497,7 @@ class KeyboardView(
         addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         setupPreview()
         applyShiftToKeys()
+        showSuggestions(currentSuggestions.toList())
     }
 
     private fun rebuildAll() {
@@ -456,6 +525,7 @@ class KeyboardView(
         addView(clipboardPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         allKeyContainer.visibility = GONE
         clipboardShowing = true
+        suggestionBar.visibility = GONE
     }
 
     private fun hideClipboardPanel() {
@@ -463,6 +533,7 @@ class KeyboardView(
         clipboardPanel = null
         allKeyContainer.visibility = VISIBLE
         clipboardShowing = false
+        if (!settingsShowing && !emojiShowing) suggestionBar.visibility = VISIBLE
     }
 
     private fun buildClipboardPanel(): LinearLayout {
@@ -669,6 +740,7 @@ class KeyboardView(
         addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         allKeyContainer.visibility = GONE
         emojiShowing = true
+        suggestionBar.visibility = GONE
     }
 
     private fun hideEmojiPanel() {
@@ -676,6 +748,7 @@ class KeyboardView(
         emojiPanel = null
         allKeyContainer.visibility = VISIBLE
         emojiShowing = false
+        if (!settingsShowing && !clipboardShowing) suggestionBar.visibility = VISIBLE
     }
 
     private fun buildEmojiPanel(): LinearLayout {
@@ -914,6 +987,7 @@ class KeyboardView(
         numbersContainer.visibility = if (mode == Mode.NUMBERS) VISIBLE else GONE
         symbolsContainer.visibility = if (mode == Mode.SYMBOLS) VISIBLE else GONE
         applyShiftToKeys()
+        if (mode != Mode.LETTERS) showSuggestions(emptyList())
     }
 
     fun applyShift(state: ShiftState) {

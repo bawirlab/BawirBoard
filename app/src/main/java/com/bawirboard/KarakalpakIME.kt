@@ -18,6 +18,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private var lastDarkMode = true
 
     override fun onCreateInputView(): View {
+        SuggestionEngine.load(this) { updateSuggestions() }
         val kb = KeyboardView(this, this)
         keyboardView = kb
         lastNumberRowSetting = PrefsManager.isNumberRowEnabled(this)
@@ -33,6 +34,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
             }
             kb.applyShift(KeyboardView.ShiftState.OFF)
         }
+        updateSuggestions()
     }
 
     override fun onWindowShown() {
@@ -61,6 +63,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         if (keyboardView?.currentShift() == KeyboardView.ShiftState.ON) {
             keyboardView?.applyShift(KeyboardView.ShiftState.OFF)
         }
+        updateSuggestions()
     }
 
     override fun onKeyDelete() {
@@ -71,6 +74,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         } else {
             ic.commitText("", 1)
         }
+        updateSuggestions()
     }
 
     override fun onKeyEnter() {
@@ -119,6 +123,44 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     override fun onSwitchKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showInputMethodPicker()
+    }
+
+    override fun onSuggestionTapped(word: String) {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: return
+        // Find the partial word the user is currently typing (text after last whitespace)
+        val lastBreak = before.indexOfLast { it.isWhitespace() }
+        val prefix = if (lastBreak == -1) before else before.substring(lastBreak + 1)
+        if (prefix.isNotEmpty()) {
+            ic.deleteSurroundingText(prefix.length, 0)
+        }
+        ic.commitText("$word ", 1)
+        updateSuggestions()
+    }
+
+    private fun updateSuggestions() {
+        if (!SuggestionEngine.isLoaded) return
+        val kb = keyboardView ?: return
+        if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
+            kb.showSuggestions(emptyList())
+            return
+        }
+        val ic = currentInputConnection ?: run { kb.showSuggestions(emptyList()); return }
+        val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: run { kb.showSuggestions(emptyList()); return }
+
+        val lastBreak = before.indexOfLast { it.isWhitespace() }
+        val prefix = if (lastBreak == -1) before else before.substring(lastBreak + 1)
+
+        val suggestions = if (prefix.isNotEmpty()) {
+            SuggestionEngine.getCompletions(prefix)
+        } else {
+            // Cursor is right after a space — suggest next words for the last completed word
+            val trimmed = before.trimEnd()
+            val prevBreak = trimmed.indexOfLast { it.isWhitespace() }
+            val lastWord = if (prevBreak == -1) trimmed else trimmed.substring(prevBreak + 1)
+            SuggestionEngine.getNextWords(lastWord)
+        }
+        kb.showSuggestions(suggestions)
     }
 
     override fun onOpenSettings() {
