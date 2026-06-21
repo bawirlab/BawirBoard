@@ -61,6 +61,9 @@ class KeyboardView(
     private var clipboardShowing = false
 
     // Suggestion strip
+    // Toolbar and suggestion strip live in one fixed-height container and overlap, so
+    // switching between them only toggles child visibility — the keyboard never re-lays-out.
+    private lateinit var topBar: FrameLayout
     private lateinit var toolbar: LinearLayout
     private lateinit var suggestionBar: LinearLayout
     private val suggestionChips = arrayOfNulls<TextView>(3)
@@ -92,13 +95,7 @@ class KeyboardView(
         orientation = VERTICAL
         applyBg()
 
-        toolbar = buildToolbar()
-        addView(toolbar)
-        suggestionBar = buildSuggestionBar()
-        addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
-        // Toolbar is the default; the suggestion strip replaces it only while typing a word.
-        toolbar.visibility = VISIBLE
-        suggestionBar.visibility = GONE
+        addView(buildTopBar(), LayoutParams(LayoutParams.MATCH_PARENT, 44.dp))
 
         allKeyContainer.addView(lettersContainer)
         allKeyContainer.addView(numbersContainer)
@@ -178,6 +175,22 @@ class KeyboardView(
     }
 
     // ── Suggestion strip ───────────────────────────────────────────────────
+
+    // Builds the merged top bar: toolbar and suggestion strip overlap inside one fixed-height
+    // FrameLayout. Toolbar is the default; the suggestion strip replaces it while typing.
+    private fun buildTopBar(): FrameLayout {
+        toolbar = buildToolbar()
+        suggestionBar = buildSuggestionBar()
+        topBar = FrameLayout(context).apply {
+            addView(toolbar, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(suggestionBar, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+        toolbar.visibility = VISIBLE
+        suggestionBar.visibility = GONE
+        return topBar
+    }
 
     private fun buildSuggestionBar(): LinearLayout {
         val barBg = if (isDark) 0xFF111111.toInt() else 0xFFC8CDD4.toInt()
@@ -496,10 +509,7 @@ class KeyboardView(
         clipboardShowing = false
         applyBg()
         removeAllViews()
-        toolbar = buildToolbar()
-        addView(toolbar)
-        suggestionBar = buildSuggestionBar()
-        addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
+        addView(buildTopBar(), LayoutParams(LayoutParams.MATCH_PARENT, 44.dp))
 
         letterKeyRows.clear()
         numberKeyRows.clear()
