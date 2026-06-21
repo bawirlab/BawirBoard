@@ -61,6 +61,7 @@ class KeyboardView(
     private var clipboardShowing = false
 
     // Suggestion strip
+    private lateinit var toolbar: LinearLayout
     private lateinit var suggestionBar: LinearLayout
     private val suggestionChips = arrayOfNulls<TextView>(3)
     private val currentSuggestions = mutableListOf<String>()
@@ -91,9 +92,13 @@ class KeyboardView(
         orientation = VERTICAL
         applyBg()
 
-        addView(buildToolbar())
+        toolbar = buildToolbar()
+        addView(toolbar)
         suggestionBar = buildSuggestionBar()
         addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
+        // Toolbar is the default; the suggestion strip replaces it only while typing a word.
+        toolbar.visibility = VISIBLE
+        suggestionBar.visibility = GONE
 
         allKeyContainer.addView(lettersContainer)
         allKeyContainer.addView(numbersContainer)
@@ -225,6 +230,26 @@ class KeyboardView(
                 chip.text = ""
                 chip.visibility = INVISIBLE
             }
+        }
+        applyBarSwap()
+    }
+
+    // Toolbar is shown by default; while there are word suggestions (i.e. mid-typing) the
+    // suggestion strip takes its place. When a panel is open it owns the area and the
+    // toolbar stays visible as the nav bar.
+    private fun applyBarSwap() {
+        if (!::toolbar.isInitialized || !::suggestionBar.isInitialized) return
+        if (settingsShowing || emojiShowing || clipboardShowing) {
+            suggestionBar.visibility = GONE
+            toolbar.visibility = VISIBLE
+            return
+        }
+        if (currentSuggestions.isNotEmpty()) {
+            suggestionBar.visibility = VISIBLE
+            toolbar.visibility = GONE
+        } else {
+            suggestionBar.visibility = GONE
+            toolbar.visibility = VISIBLE
         }
     }
 
@@ -448,14 +473,14 @@ class KeyboardView(
         settingsPanel?.visibility = VISIBLE
         allKeyContainer.visibility = GONE
         settingsShowing = true
-        suggestionBar.visibility = GONE
+        applyBarSwap()
     }
 
     private fun hideSettingsPanel() {
         settingsPanel?.visibility = GONE
         allKeyContainer.visibility = VISIBLE
         settingsShowing = false
-        if (!emojiShowing && !clipboardShowing) suggestionBar.visibility = VISIBLE
+        applyBarSwap()
         rebuildAll()
     }
 
@@ -471,7 +496,8 @@ class KeyboardView(
         clipboardShowing = false
         applyBg()
         removeAllViews()
-        addView(buildToolbar())
+        toolbar = buildToolbar()
+        addView(toolbar)
         suggestionBar = buildSuggestionBar()
         addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
 
@@ -525,7 +551,7 @@ class KeyboardView(
         addView(clipboardPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         allKeyContainer.visibility = GONE
         clipboardShowing = true
-        suggestionBar.visibility = GONE
+        applyBarSwap()
     }
 
     private fun hideClipboardPanel() {
@@ -533,7 +559,7 @@ class KeyboardView(
         clipboardPanel = null
         allKeyContainer.visibility = VISIBLE
         clipboardShowing = false
-        if (!settingsShowing && !emojiShowing) suggestionBar.visibility = VISIBLE
+        applyBarSwap()
     }
 
     private fun buildClipboardPanel(): LinearLayout {
@@ -740,7 +766,7 @@ class KeyboardView(
         addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         allKeyContainer.visibility = GONE
         emojiShowing = true
-        suggestionBar.visibility = GONE
+        applyBarSwap()
     }
 
     private fun hideEmojiPanel() {
@@ -748,7 +774,7 @@ class KeyboardView(
         emojiPanel = null
         allKeyContainer.visibility = VISIBLE
         emojiShowing = false
-        if (!settingsShowing && !clipboardShowing) suggestionBar.visibility = VISIBLE
+        applyBarSwap()
     }
 
     private fun buildEmojiPanel(): LinearLayout {
