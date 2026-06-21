@@ -44,19 +44,19 @@ object SuggestionEngine {
     // Returns up to 3 words that start with the given prefix (case-insensitive).
     fun getCompletions(prefix: String): List<String> {
         if (!isLoaded || prefix.isBlank()) return emptyList()
-        val lc = prefix.lowercase()
-        // Binary search for first entry whose lowercase >= lc (data is sorted case-insensitively)
+        // Binary search for first entry >= prefix (data is sorted case-insensitively).
+        // Case-insensitive compareTo/startsWith avoid allocating a lowercased string per comparison.
         var lo = 0
         var hi = sortedWords.size
         while (lo < hi) {
             val mid = (lo + hi) ushr 1
-            if (sortedWords[mid].lowercase() < lc) lo = mid + 1 else hi = mid
+            if (sortedWords[mid].compareTo(prefix, ignoreCase = true) < 0) lo = mid + 1 else hi = mid
         }
         val result = mutableListOf<String>()
         var i = lo
         while (i < sortedWords.size && result.size < 3) {
             val w = sortedWords[i++]
-            if (w.lowercase().startsWith(lc)) result.add(w) else break
+            if (w.startsWith(prefix, ignoreCase = true)) result.add(w) else break
         }
         return result
     }

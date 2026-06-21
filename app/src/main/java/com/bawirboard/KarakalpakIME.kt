@@ -1,6 +1,8 @@
 package com.bawirboard
 
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
 import android.view.KeyEvent
@@ -16,6 +18,18 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     private var lastNumberRowSetting = false
     private var lastDarkMode = true
+
+    // Suggestion updates are debounced off the typing critical path: committing a
+    // character is instant, while the cross-process text lookup + dictionary search
+    // runs only once typing pauses briefly, so fast typing never blocks on it.
+    private val suggestionHandler = Handler(Looper.getMainLooper())
+    private val suggestionRunnable = Runnable { updateSuggestions() }
+    private val suggestionDebounceMs = 40L
+
+    private fun scheduleSuggestions() {
+        suggestionHandler.removeCallbacks(suggestionRunnable)
+        suggestionHandler.postDelayed(suggestionRunnable, suggestionDebounceMs)
+    }
 
     override fun onCreateInputView(): View {
         SuggestionEngine.load(this) { updateSuggestions() }
@@ -54,6 +68,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     }
 
     override fun onDestroy() {
+        suggestionHandler.removeCallbacks(suggestionRunnable)
         keyboardView = null
         super.onDestroy()
     }
@@ -63,7 +78,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         if (keyboardView?.currentShift() == KeyboardView.ShiftState.ON) {
             keyboardView?.applyShift(KeyboardView.ShiftState.OFF)
         }
-        updateSuggestions()
+        scheduleSuggestions()
     }
 
     override fun onKeyDelete() {
@@ -74,7 +89,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         } else {
             ic.commitText("", 1)
         }
-        updateSuggestions()
+        scheduleSuggestions()
     }
 
     override fun onKeyEnter() {
@@ -135,7 +150,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
             ic.deleteSurroundingText(prefix.length, 0)
         }
         ic.commitText("$word ", 1)
-        updateSuggestions()
+        scheduleSuggestions()
     }
 
     private fun updateSuggestions() {
