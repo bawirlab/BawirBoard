@@ -33,6 +33,13 @@ class KeyView(
     private val repeatDelay = 50L
 
     private val longPressRunnable = Runnable { onLongPress() }
+    // Preview is shown with a 60ms delay so fast typing (ACTION_UP fires first) cancels
+    // it before it ever shows, eliminating two WindowManager IPC calls per fast keystroke.
+    private val showPreviewRunnable = Runnable {
+        if (keyDef.type == KeyType.LETTER) {
+            listener.onShowKeyPreview(this, if (isShifted) keyDef.shiftLabel else keyDef.label)
+        }
+    }
     private val repeatRunnable = object : Runnable {
         override fun run() {
             if (isLongPressing && keyDef.type == KeyType.DELETE) {
@@ -186,6 +193,7 @@ class KeyView(
     }
 
     fun updateShiftState(shifted: Boolean) {
+        if (isShifted == shifted) return
         isShifted = shifted
         if (keyDef.type == KeyType.LETTER) {
             label.text = if (shifted) keyDef.shiftLabel else keyDef.label
@@ -212,14 +220,14 @@ class KeyView(
                     handler.postDelayed(longPressRunnable, longPressDelay)
                     v.isPressed = true
                     if (keyDef.type == KeyType.LETTER) {
-                        val char = if (isShifted) keyDef.shiftLabel else keyDef.label
-                        listener.onShowKeyPreview(this, char)
+                        handler.postDelayed(showPreviewRunnable, 60L)
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     handler.removeCallbacks(longPressRunnable)
                     handler.removeCallbacks(repeatRunnable)
+                    handler.removeCallbacks(showPreviewRunnable)
                     if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview()
 
                     if (isLongPressing) {
@@ -241,6 +249,7 @@ class KeyView(
                 MotionEvent.ACTION_CANCEL -> {
                     handler.removeCallbacks(longPressRunnable)
                     handler.removeCallbacks(repeatRunnable)
+                    handler.removeCallbacks(showPreviewRunnable)
                     if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview()
                     isLongPressing = false
                     dismissPopup()
@@ -331,7 +340,7 @@ class KeyView(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        handler.removeCallbacksAndMessages(null)
+        handler.removeCallbacksAndMessages(null)  // clears longPress, repeat, and showPreview
         dismissPopup()
     }
 }
