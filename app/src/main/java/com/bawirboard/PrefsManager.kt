@@ -26,6 +26,9 @@ object PrefsManager {
     fun isNumberRowEnabled(ctx: Context) = prefs(ctx).getBoolean("number_row", false)
     fun setNumberRowEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("number_row", v).apply()
 
+    fun getClipboardHistory(ctx: Context) = prefs(ctx).getString("clipboard_history", "") ?: ""
+    fun setClipboardHistory(ctx: Context, v: String) = prefs(ctx).edit().putString("clipboard_history", v).apply()
+
     fun accentColorFor(theme: String): Int = when (theme) {
         "purple" -> 0xFF7C4DFF.toInt()
         "green"  -> 0xFF00BFA5.toInt()

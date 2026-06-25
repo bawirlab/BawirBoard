@@ -588,6 +588,8 @@ class KeyboardView(
         }
         hideSettingsPanel()
         hideEmojiPanel()
+        // Make sure the latest system copy is in the history before showing it.
+        captureCurrentClip()
         // Match the exact height the key area occupies so the IME window does not
         // resize/jump when the clipboard replaces it. The top bar stays in place.
         val targetH = allKeyContainer.height
@@ -604,6 +606,33 @@ class KeyboardView(
         showToolbar()
     }
 
+    // Records the current system clipboard contents into the persistent history.
+    private fun captureCurrentClip() {
+        try {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = cm.primaryClip ?: return
+            for (i in 0 until clip.itemCount) {
+                val t = clip.getItemAt(i)?.coerceToText(context)?.toString()
+                if (!t.isNullOrBlank()) ClipboardHistory.add(context, t)
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Rebuilds the clipboard panel in place (e.g. after items are deleted).
+    private fun refreshClipboardPanel() {
+        if (!clipboardShowing) return
+        clipboardPanel?.let { removeView(it) }
+        val targetH = allKeyContainer.height
+        clipboardPanel = buildClipboardPanel()
+        addView(
+            clipboardPanel,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
     private fun hideClipboardPanel() {
         clipboardPanel?.let { removeView(it) }
         clipboardPanel = null
@@ -617,15 +646,7 @@ class KeyboardView(
         val textColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
         val cardBg = if (isDark) 0xFF2A2A2A.toInt() else 0xFFFFFFFF.toInt()
 
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clipItems = mutableListOf<String>()
-        val clip = cm.primaryClip
-        if (clip != null) {
-            for (i in 0 until clip.itemCount) {
-                val t = clip.getItemAt(i)?.text?.toString()
-                if (!t.isNullOrBlank()) clipItems.add(t)
-            }
-        }
+        val clipItems = ClipboardHistory.all(context).toMutableList()
 
         val selectedIndices = mutableSetOf<Int>()
         val cardViews = mutableListOf<View>()
@@ -783,18 +804,25 @@ class KeyboardView(
                 .setTitle("Delete All")
                 .setMessage("Clear entire clipboard history?")
                 .setPositiveButton("Delete All") { _, _ ->
+                    ClipboardHistory.clear(context)
                     try {
                         val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipMgr.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
                     } catch (_: Exception) {}
-                    hideClipboardPanel()
+                    refreshClipboardPanel()
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
         }
 
         deleteBtn.setOnClickListener { showDeleteAllDialog() }
-        bulkDeleteBtn.setOnClickListener { showDeleteAllDialog() }
+        bulkDeleteBtn.setOnClickListener {
+            val toRemove = selectedIndices.mapNotNull { clipItems.getOrNull(it) }
+            if (toRemove.isNotEmpty()) {
+                ClipboardHistory.remove(context, toRemove)
+                refreshClipboardPanel()
+            }
+        }
         pinBtn.setOnClickListener {
             val pinned = selectedIndices.sorted().mapNotNull { clipItems.getOrNull(it) }.joinToString("\n")
             if (pinned.isNotEmpty()) listener.onKeyText(pinned)

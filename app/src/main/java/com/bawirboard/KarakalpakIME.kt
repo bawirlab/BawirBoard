@@ -1,5 +1,6 @@
 package com.bawirboard
 
+import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
 import android.text.InputType
 import android.view.KeyEvent
@@ -14,6 +15,25 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private var lastNumberRowSetting = false
     private var lastDarkMode = true
 
+    private var clipboardManager: ClipboardManager? = null
+    private val clipChangedListener = ClipboardManager.OnPrimaryClipChangedListener { captureClipboard() }
+
+    override fun onCreate() {
+        super.onCreate()
+        clipboardManager = (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)?.also {
+            it.addPrimaryClipChangedListener(clipChangedListener)
+        }
+    }
+
+    // Record the current clipboard contents into the persistent history.
+    private fun captureClipboard() {
+        val clip = clipboardManager?.primaryClip ?: return
+        for (i in 0 until clip.itemCount) {
+            val t = try { clip.getItemAt(i)?.coerceToText(this)?.toString() } catch (_: Exception) { null }
+            if (!t.isNullOrBlank()) ClipboardHistory.add(this, t)
+        }
+    }
+
     override fun onCreateInputView(): View {
         SuggestionEngine.load(this) { updateSuggestions() }
         val kb = KeyboardView(this, this)
@@ -25,6 +45,8 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        // Capture anything copied before the keyboard became active for this field.
+        captureClipboard()
         keyboardView?.let { kb ->
             if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
                 kb.switchMode(KeyboardView.Mode.LETTERS)
@@ -51,6 +73,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     }
 
     override fun onDestroy() {
+        clipboardManager?.removePrimaryClipChangedListener(clipChangedListener)
         keyboardView = null
         super.onDestroy()
     }
