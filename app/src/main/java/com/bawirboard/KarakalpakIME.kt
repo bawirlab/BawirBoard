@@ -127,14 +127,19 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onSuggestionTapped(word: String) {
         val ic = currentInputConnection ?: return
-        val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: return
-        // Find the partial word the user is currently typing (text after last whitespace)
-        val lastBreak = before.indexOfLast { it.isWhitespace() }
-        val prefix = if (lastBreak == -1) before else before.substring(lastBreak + 1)
-        if (prefix.isNotEmpty()) {
-            ic.deleteSurroundingText(prefix.length, 0)
+        val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: ""
+        // Only replace text when the user is mid-word (cursor right after letters).
+        // After a space or punctuation the suggestion is a next-word, so just insert it.
+        if (before.isNotEmpty() && before.last().isLetter()) {
+            var len = 0
+            var i = before.length
+            while (i > 0 && before[i - 1].isLetter()) { i--; len++ }
+            if (len > 0) ic.deleteSurroundingText(len, 0)
         }
         ic.commitText("$word ", 1)
+        if (keyboardView?.currentShift() == KeyboardView.ShiftState.ON) {
+            keyboardView?.applyShift(KeyboardView.ShiftState.OFF)
+        }
         updateSuggestions()
     }
 
@@ -148,19 +153,33 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         val ic = currentInputConnection ?: run { kb.showSuggestions(emptyList()); return }
         val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: run { kb.showSuggestions(emptyList()); return }
 
-        val lastBreak = before.indexOfLast { it.isWhitespace() }
-        val prefix = if (lastBreak == -1) before else before.substring(lastBreak + 1)
-
-        val suggestions = if (prefix.isNotEmpty()) {
-            SuggestionEngine.getCompletions(prefix)
+        val typingWord = before.isNotEmpty() && before.last().isLetter()
+        val suggestions = if (typingWord) {
+            // Mid-word: complete the run of letters immediately before the cursor.
+            var start = before.length
+            while (start > 0 && before[start - 1].isLetter()) start--
+            SuggestionEngine.getCompletions(before.substring(start))
         } else {
-            // Cursor is right after a space — suggest next words for the last completed word
-            val trimmed = before.trimEnd()
-            val prevBreak = trimmed.indexOfLast { it.isWhitespace() }
-            val lastWord = if (prevBreak == -1) trimmed else trimmed.substring(prevBreak + 1)
-            SuggestionEngine.getNextWords(lastWord)
+            // At a word boundary (after a space, period, or other punctuation): predict
+            // the next word from the last typed word, ignoring any punctuation between.
+            val context = lastLetterWord(before)
+            if (context.isEmpty()) {
+                emptyList()
+            } else {
+                val next = SuggestionEngine.getNextWords(context)
+                if (next.isNotEmpty()) next else SuggestionEngine.getDefaultNextWords()
+            }
         }
         kb.showSuggestions(suggestions)
+    }
+
+    // The last run of letters in the text, skipping any trailing punctuation/whitespace.
+    private fun lastLetterWord(text: String): String {
+        var end = text.length
+        while (end > 0 && !text[end - 1].isLetter()) end--
+        var start = end
+        while (start > 0 && text[start - 1].isLetter()) start--
+        return text.substring(start, end)
     }
 
     override fun onOpenSettings() {

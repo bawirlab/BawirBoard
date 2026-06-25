@@ -60,7 +60,9 @@ class KeyboardView(
     private var clipboardPanel: LinearLayout? = null
     private var clipboardShowing = false
 
-    // Suggestion strip
+    // Top bar: a single row that swaps between the icon toolbar and the suggestion strip.
+    private lateinit var topBar: FrameLayout
+    private lateinit var toolbarView: LinearLayout
     private lateinit var suggestionBar: LinearLayout
     private val suggestionChips = arrayOfNulls<TextView>(3)
     private val currentSuggestions = mutableListOf<String>()
@@ -91,9 +93,8 @@ class KeyboardView(
         orientation = VERTICAL
         applyBg()
 
-        addView(buildToolbar())
-        suggestionBar = buildSuggestionBar()
-        addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
+        topBar = buildTopBar()
+        addView(topBar, LayoutParams(LayoutParams.MATCH_PARENT, 44.dp))
 
         allKeyContainer.addView(lettersContainer)
         allKeyContainer.addView(numbersContainer)
@@ -172,6 +173,34 @@ class KeyboardView(
         }
     }
 
+    // ── Top bar (toolbar ⇄ suggestions) ──────────────────────────────────────
+
+    // One row that holds both the icon toolbar and the suggestion strip stacked on
+    // top of each other; only one is visible at a time. Starts on the toolbar.
+    private fun buildTopBar(): FrameLayout {
+        toolbarView = buildToolbar()
+        suggestionBar = buildSuggestionBar()
+        return FrameLayout(context).apply {
+            addView(toolbarView, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(suggestionBar, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            suggestionBar.visibility = GONE
+        }
+    }
+
+    private fun showToolbar() {
+        if (!::topBar.isInitialized) return
+        suggestionBar.visibility = GONE
+        toolbarView.visibility = VISIBLE
+    }
+
+    private fun showSuggestionBar() {
+        if (!::topBar.isInitialized) return
+        toolbarView.visibility = GONE
+        suggestionBar.visibility = VISIBLE
+    }
+
     // ── Suggestion strip ───────────────────────────────────────────────────
 
     private fun buildSuggestionBar(): LinearLayout {
@@ -183,6 +212,22 @@ class KeyboardView(
             orientation = HORIZONTAL
             setBackgroundColor(barBg)
             gravity = Gravity.CENTER_VERTICAL
+
+            // Leading collapse chevron — returns to the icon toolbar.
+            addView(TextView(context).apply {
+                text = "‹"
+                textSize = 24f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(chipColor)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { showToolbar() }
+            }, LayoutParams(36.dp, LayoutParams.MATCH_PARENT))
+            addView(View(context).apply {
+                setBackgroundColor(divColor)
+                layoutParams = LayoutParams(1, 20.dp)
+            })
 
             for (i in 0..2) {
                 if (i > 0) {
@@ -226,6 +271,10 @@ class KeyboardView(
                 chip.visibility = INVISIBLE
             }
         }
+        // While a panel is open the top bar stays on the toolbar; don't flip it.
+        if (settingsShowing || emojiShowing || clipboardShowing) return
+        // Swap to suggestions when there is something to show, otherwise the toolbar.
+        if (words.isEmpty()) showToolbar() else showSuggestionBar()
     }
 
     // ── Toolbar ────────────────────────────────────────────────────────────
@@ -451,10 +500,10 @@ class KeyboardView(
         }
         hideEmojiPanel()
         hideClipboardPanel()
-        // Match the current keyboard height so the IME window stays the same size.
+        // Match the current key-area height so the IME window stays the same size.
         // Captured before hiding the key area, and re-applied each time the panel is
         // shown so it tracks size-slider changes made in a previous session.
-        val targetH = suggestionBar.height + allKeyContainer.height
+        val targetH = allKeyContainer.height
         if (settingsPanel == null) {
             settingsPanel = buildSettingsPanel()
             addView(settingsPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
@@ -467,14 +516,14 @@ class KeyboardView(
         settingsPanel?.visibility = VISIBLE
         allKeyContainer.visibility = GONE
         settingsShowing = true
-        suggestionBar.visibility = GONE
+        showToolbar()
     }
 
     private fun hideSettingsPanel() {
         settingsPanel?.visibility = GONE
         allKeyContainer.visibility = VISIBLE
         settingsShowing = false
-        if (!emojiShowing && !clipboardShowing) suggestionBar.visibility = VISIBLE
+        if (!emojiShowing && !clipboardShowing) showSuggestions(currentSuggestions.toList())
         rebuildAll()
     }
 
@@ -490,9 +539,8 @@ class KeyboardView(
         clipboardShowing = false
         applyBg()
         removeAllViews()
-        addView(buildToolbar())
-        suggestionBar = buildSuggestionBar()
-        addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
+        topBar = buildTopBar()
+        addView(topBar, LayoutParams(LayoutParams.MATCH_PARENT, 44.dp))
 
         letterKeyRows.clear()
         numberKeyRows.clear()
@@ -540,9 +588,9 @@ class KeyboardView(
         }
         hideSettingsPanel()
         hideEmojiPanel()
-        // Match the exact height the suggestion bar + key area currently occupy so the
-        // IME window does not resize/jump when the clipboard replaces them.
-        val targetH = suggestionBar.height + allKeyContainer.height
+        // Match the exact height the key area occupies so the IME window does not
+        // resize/jump when the clipboard replaces it. The top bar stays in place.
+        val targetH = allKeyContainer.height
         clipboardPanel = buildClipboardPanel()
         addView(
             clipboardPanel,
@@ -553,7 +601,7 @@ class KeyboardView(
         )
         allKeyContainer.visibility = GONE
         clipboardShowing = true
-        suggestionBar.visibility = GONE
+        showToolbar()
     }
 
     private fun hideClipboardPanel() {
@@ -561,7 +609,7 @@ class KeyboardView(
         clipboardPanel = null
         allKeyContainer.visibility = VISIBLE
         clipboardShowing = false
-        if (!settingsShowing && !emojiShowing) suggestionBar.visibility = VISIBLE
+        if (!settingsShowing && !emojiShowing) showSuggestions(currentSuggestions.toList())
     }
 
     private fun buildClipboardPanel(): LinearLayout {
@@ -766,8 +814,8 @@ class KeyboardView(
         hideSettingsPanel()
         hideClipboardPanel()
         removeView(emojiPanel)
-        // Match the current keyboard height so the IME window stays the same size.
-        val targetH = suggestionBar.height + allKeyContainer.height
+        // Match the current key-area height so the IME window stays the same size.
+        val targetH = allKeyContainer.height
         emojiPanel = buildEmojiPanel()
         addView(
             emojiPanel,
@@ -778,7 +826,7 @@ class KeyboardView(
         )
         allKeyContainer.visibility = GONE
         emojiShowing = true
-        suggestionBar.visibility = GONE
+        showToolbar()
     }
 
     private fun hideEmojiPanel() {
@@ -786,7 +834,7 @@ class KeyboardView(
         emojiPanel = null
         allKeyContainer.visibility = VISIBLE
         emojiShowing = false
-        if (!settingsShowing && !clipboardShowing) suggestionBar.visibility = VISIBLE
+        if (!settingsShowing && !clipboardShowing) showSuggestions(currentSuggestions.toList())
     }
 
     private fun buildEmojiPanel(): LinearLayout {

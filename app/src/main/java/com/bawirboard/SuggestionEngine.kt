@@ -13,6 +13,9 @@ object SuggestionEngine {
 
     private var sortedWords = emptyArray<String>()
     private val nextWords = HashMap<String, Array<String>>(90000)
+    // Globally most common follow-up words, used as a fallback prediction so the
+    // suggestion bar keeps offering next words even when a word has no recorded ones.
+    private var defaultNext = emptyArray<String>()
 
     fun load(context: Context, onReady: () -> Unit) {
         if (isLoaded || isLoading) return
@@ -20,6 +23,7 @@ object SuggestionEngine {
         val appCtx = context.applicationContext
         Thread {
             val words = ArrayList<String>(82000)
+            val freq = HashMap<String, Int>(90000)
             try {
                 appCtx.assets.open("data.jsonl").bufferedReader().useLines { lines ->
                     for (line in lines) {
@@ -27,11 +31,15 @@ object SuggestionEngine {
                         val obj = JSONObject(line)
                         val w = obj.getString("w")
                         val sArr = obj.getJSONArray("s")
-                        nextWords[w] = Array(sArr.length()) { sArr.getString(it) }
+                        val arr = Array(sArr.length()) { sArr.getString(it) }
+                        nextWords[w] = arr
+                        for (s in arr) freq[s] = (freq[s] ?: 0) + 1
                         words.add(w)
                     }
                 }
                 sortedWords = words.toTypedArray()
+                defaultNext = freq.entries.sortedByDescending { it.value }
+                    .take(3).map { it.key }.toTypedArray()
                 isLoaded = sortedWords.isNotEmpty()
             } catch (_: Exception) {
             } finally {
@@ -40,6 +48,9 @@ object SuggestionEngine {
             Handler(Looper.getMainLooper()).post(onReady)
         }.start()
     }
+
+    // Fallback next-word predictions (most common follow-up words overall).
+    fun getDefaultNextWords(): List<String> = defaultNext.toList()
 
     // Returns up to 3 words that start with the given prefix (case-insensitive).
     fun getCompletions(prefix: String): List<String> {
