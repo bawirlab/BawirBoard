@@ -521,8 +521,17 @@ class KeyboardView(
         }
         hideSettingsPanel()
         hideEmojiPanel()
+        // Match the exact height the suggestion bar + key area currently occupy so the
+        // IME window does not resize/jump when the clipboard replaces them.
+        val targetH = suggestionBar.height + allKeyContainer.height
         clipboardPanel = buildClipboardPanel()
-        addView(clipboardPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(
+            clipboardPanel,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
+            )
+        )
         allKeyContainer.visibility = GONE
         clipboardShowing = true
         suggestionBar.visibility = GONE
@@ -624,7 +633,9 @@ class KeyboardView(
         panel.addView(actionBar)
 
         val scrollView = ScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, (120 * resources.displayMetrics.density).toInt())
+            // Weight 0/1f makes the scroll area expand to fill whatever height the
+            // panel is given, so the panel exactly matches the keyboard height.
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
             isVerticalScrollBarEnabled = false
         }
         val gridContainer = LinearLayout(context).apply { orientation = VERTICAL }
