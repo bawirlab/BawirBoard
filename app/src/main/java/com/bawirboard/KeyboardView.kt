@@ -325,11 +325,10 @@ class KeyboardView(
         val heightProgress = ((PrefsManager.getKeyHeightScale(context) - 0.8f) / 0.1f + 0.5f).toInt().coerceIn(0, 5)
         val widthProgress = ((PrefsManager.getKeyWidthScale(context) - 0.7f) / 0.05f + 0.5f).toInt().coerceIn(0, 6)
 
-        return LinearLayout(context).apply {
+        val content = LinearLayout(context).apply {
             orientation = VERTICAL
             setBackgroundColor(bgColor)
             setPadding(12.dp, 8.dp, 12.dp, 8.dp)
-            visibility = GONE
 
             // Header row: title + Done button
             addView(LinearLayout(context).apply {
@@ -432,6 +431,17 @@ class KeyboardView(
                 })
             })
         }
+
+        val scroll = ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+        return LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(bgColor)
+            visibility = GONE
+            addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        }
     }
 
     fun showSettingsPanel() {
@@ -441,9 +451,18 @@ class KeyboardView(
         }
         hideEmojiPanel()
         hideClipboardPanel()
+        // Match the current keyboard height so the IME window stays the same size.
+        // Captured before hiding the key area, and re-applied each time the panel is
+        // shown so it tracks size-slider changes made in a previous session.
+        val targetH = suggestionBar.height + allKeyContainer.height
         if (settingsPanel == null) {
             settingsPanel = buildSettingsPanel()
             addView(settingsPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+        settingsPanel?.let { panel ->
+            panel.layoutParams = panel.layoutParams.apply {
+                height = if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
+            }
         }
         settingsPanel?.visibility = VISIBLE
         allKeyContainer.visibility = GONE
@@ -747,8 +766,16 @@ class KeyboardView(
         hideSettingsPanel()
         hideClipboardPanel()
         removeView(emojiPanel)
+        // Match the current keyboard height so the IME window stays the same size.
+        val targetH = suggestionBar.height + allKeyContainer.height
         emojiPanel = buildEmojiPanel()
-        addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(
+            emojiPanel,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
+            )
+        )
         allKeyContainer.visibility = GONE
         emojiShowing = true
         suggestionBar.visibility = GONE
@@ -850,7 +877,8 @@ class KeyboardView(
         }
 
         val contentScroll = ScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, (160 * resources.displayMetrics.density).toInt())
+            // Weight 0/1f fills whatever height the panel is given (set to match the keyboard).
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
             isVerticalScrollBarEnabled = false
         }
         val contentGrid = LinearLayout(context).apply {
