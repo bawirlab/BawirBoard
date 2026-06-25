@@ -161,8 +161,12 @@ class KeyView(
     }
 
     private fun applyIconDrawable(tint: Int) {
+        if (keyDef.type == KeyType.SHIFT) {
+            // Base appearance; the live shift state is applied via applyShiftIcon().
+            applyShiftIcon(shiftActive = false, capsLock = false)
+            return
+        }
         val resId = when (keyDef.type) {
-            KeyType.SHIFT -> R.drawable.ic_shift_outline
             KeyType.DELETE -> R.drawable.ic_backspace
             KeyType.ENTER -> R.drawable.ic_enter
             else -> return
@@ -174,12 +178,9 @@ class KeyView(
 
     private fun applyShiftIcon(shiftActive: Boolean, capsLock: Boolean) {
         if (keyDef.type != KeyType.SHIFT) return
-        val resId = when {
-            capsLock -> R.drawable.ic_shift_caps
-            shiftActive -> R.drawable.ic_shift_filled
-            else -> R.drawable.ic_shift_outline
-        }
-        val tint = if (capsLock || shiftActive) accentColor else colorSpecialText()
+        // Base and capital share the filled "v"; base is white, capital is accent.
+        val resId = if (capsLock) R.drawable.ic_shift_caps else R.drawable.ic_shift_filled
+        val tint = if (capsLock || shiftActive) accentColor else colorKeyText()
         val d = context.getDrawable(resId)?.mutate()
         d?.setTint(tint)
         iconView?.setImageDrawable(d)

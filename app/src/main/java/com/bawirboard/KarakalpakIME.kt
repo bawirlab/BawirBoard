@@ -1,7 +1,6 @@
 package com.bawirboard
 
 import android.inputmethodservice.InputMethodService
-import android.os.SystemClock
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -11,8 +10,6 @@ import android.view.inputmethod.InputMethodManager
 class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     private var keyboardView: KeyboardView? = null
-    private var lastShiftTime = 0L
-    private val doubleTapThreshold = 400L
 
     private var lastNumberRowSetting = false
     private var lastDarkMode = true
@@ -93,17 +90,13 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     }
 
     override fun onKeyShift() {
-        val now = SystemClock.elapsedRealtime()
+        // Single tap cycles through all three states: off → caps → caps-lock → off.
         val current = keyboardView?.currentShift() ?: KeyboardView.ShiftState.OFF
-
-        val newState = when {
-            current == KeyboardView.ShiftState.CAPS_LOCK -> KeyboardView.ShiftState.OFF
-            current == KeyboardView.ShiftState.ON && (now - lastShiftTime) < doubleTapThreshold ->
-                KeyboardView.ShiftState.CAPS_LOCK
-            else -> KeyboardView.ShiftState.ON
+        val newState = when (current) {
+            KeyboardView.ShiftState.OFF -> KeyboardView.ShiftState.ON
+            KeyboardView.ShiftState.ON -> KeyboardView.ShiftState.CAPS_LOCK
+            KeyboardView.ShiftState.CAPS_LOCK -> KeyboardView.ShiftState.OFF
         }
-
-        lastShiftTime = now
         keyboardView?.applyShift(newState)
     }
 
