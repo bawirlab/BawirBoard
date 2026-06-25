@@ -1002,14 +1002,18 @@ class KeyboardView(
             orientation = HORIZONTAL
             gravity = Gravity.END
             setBackgroundColor(if (isDark) 0xFF1A1A1A.toInt() else 0xFFC0C5CC.toInt())
-            addView(TextView(context).apply {
-                text = "Done"
-                textSize = 13f
-                setTextColor(accentColor)
-                setPadding(12.dp, 8.dp, 12.dp, 8.dp)
-                isClickable = true; isFocusable = true
-                setOnClickListener { hideEmojiPanel() }
-            })
+            // Delete button — lets the user fix a mis-tapped emoji without leaving the panel.
+            val delTint = if (isDark) 0xFFE0E0E0.toInt() else 0xFF333333.toInt()
+            addView(ImageView(context).apply {
+                val d = context.getDrawable(R.drawable.ic_backspace)?.mutate()
+                d?.setTint(delTint)
+                setImageDrawable(d)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(16.dp, 10.dp, 22.dp, 10.dp)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { listener.onKeyDelete() }
+            }, LayoutParams(64.dp, 48.dp))
         })
 
         loadCategory(0)
