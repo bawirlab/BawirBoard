@@ -973,7 +973,7 @@ class KeyboardView(
     private fun buildLetterContent() {
         lettersContainer.removeAllViews()
         letterKeyRows.clear()
-        buildRowsInto(lettersContainer, KarakalpakLayout.getLetterRows(context), letterKeyRows)
+        buildRowsInto(lettersContainer, KarakalpakLayout.getLetterRows(context), letterKeyRows, equalizeWidth = true)
     }
 
     private fun buildNumberContent() {
@@ -993,9 +993,16 @@ class KeyboardView(
     private fun buildRowsInto(
         container: LinearLayout,
         rows: List<List<KeyDef>>,
-        keyRowList: MutableList<List<KeyView>>
+        keyRowList: MutableList<List<KeyView>>,
+        equalizeWidth: Boolean = false
     ) {
         val hp = rowHPad
+        // When equalizing, every row is laid out on the same weight grid (the widest
+        // row's total weight). Shorter rows get equal half-spacers on each side so each
+        // key keeps a uniform width and the row is centered instead of being stretched.
+        val gridWeight = if (equalizeWidth)
+            rows.maxOf { row -> row.fold(0f) { acc, d -> acc + d.widthWeight } }
+        else 0f
         rows.forEach { rowDefs ->
             val rowView = LinearLayout(context).apply {
                 orientation = HORIZONTAL
@@ -1005,12 +1012,22 @@ class KeyboardView(
                 clipToPadding = false
             }
 
+            val rowWeight = rowDefs.fold(0f) { acc, d -> acc + d.widthWeight }
+            val sidePad = if (equalizeWidth && gridWeight > rowWeight) (gridWeight - rowWeight) / 2f else 0f
+            if (sidePad > 0f) {
+                rowView.addView(View(context), LayoutParams(0, LayoutParams.MATCH_PARENT, sidePad))
+            }
+
             val rowKeys = rowDefs.map { def ->
                 KeyView(context, def, listener).also { kv ->
                     rowView.addView(kv, LayoutParams(0, LayoutParams.MATCH_PARENT, def.widthWeight).apply {
                         setMargins(1.dp, 0, 1.dp, 0)
                     })
                 }
+            }
+
+            if (sidePad > 0f) {
+                rowView.addView(View(context), LayoutParams(0, LayoutParams.MATCH_PARENT, sidePad))
             }
             keyRowList.add(rowKeys)
             container.addView(rowView)
