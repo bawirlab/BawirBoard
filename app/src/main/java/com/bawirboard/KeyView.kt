@@ -46,6 +46,16 @@ class KeyView(
     private val fontScale get() = PrefsManager.getFontScale(context)
     private val accentColor get() = PrefsManager.accentColorFor(PrefsManager.getColorTheme(context))
 
+    companion object {
+        // The variable punctuation key (next to Enter) remembers what it last typed.
+        // Tap types the current value; long-press toggles to the other and types it.
+        private val PUNCT_OPTIONS = listOf(".", ",")
+        var variablePunct: String = PUNCT_OPTIONS[0]
+    }
+
+    private fun currentPunct() = variablePunct
+    private fun otherPunct() = if (variablePunct == PUNCT_OPTIONS[0]) PUNCT_OPTIONS[1] else PUNCT_OPTIONS[0]
+
     init {
         isClickable = true
         elevation = 2f * resources.displayMetrics.density
@@ -64,7 +74,7 @@ class KeyView(
 
         label = TextView(context).apply {
             gravity = Gravity.CENTER
-            typeface = if (keyDef.type == KeyType.LETTER)
+            typeface = if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT)
                 Typeface.DEFAULT_BOLD
             else
                 Typeface.create("sans-serif", Typeface.NORMAL)
@@ -140,11 +150,12 @@ class KeyView(
             label.setTextColor(textColor)
             label.text = when (keyDef.type) {
                 KeyType.SPACE -> "Space"
+                KeyType.PUNCT -> currentPunct()
                 else -> keyDef.label
             }
 
             val baseSize = when (keyDef.type) {
-                KeyType.LETTER -> 17f
+                KeyType.LETTER, KeyType.PUNCT -> 17f
                 KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE -> 14f
                 KeyType.SPACE -> 13f
                 else -> 15f
@@ -156,6 +167,9 @@ class KeyView(
             keyDef.popupCharsShifted else keyDef.popupChars
         if (activePopups.isNotEmpty()) {
             hintLabel.text = activePopups.first()
+            hintLabel.visibility = VISIBLE
+        } else if (keyDef.type == KeyType.PUNCT) {
+            hintLabel.text = otherPunct()
             hintLabel.visibility = VISIBLE
         } else {
             hintLabel.visibility = INVISIBLE
@@ -215,8 +229,11 @@ class KeyView(
                     isLongPressing = false
                     handler.postDelayed(longPressRunnable, longPressDelay)
                     v.isPressed = true
-                    if (keyDef.type == KeyType.LETTER) {
-                        val char = if (isShifted) keyDef.shiftLabel else keyDef.label
+                    if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) {
+                        val char = when (keyDef.type) {
+                            KeyType.PUNCT -> currentPunct()
+                            else -> if (isShifted) keyDef.shiftLabel else keyDef.label
+                        }
                         listener.onShowKeyPreview(this, char)
                     }
                     true
@@ -224,7 +241,7 @@ class KeyView(
                 MotionEvent.ACTION_UP -> {
                     handler.removeCallbacks(longPressRunnable)
                     handler.removeCallbacks(repeatRunnable)
-                    if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview()
+                    if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview()
 
                     if (isLongPressing) {
                         // Long-press completed: type first popup char on release
@@ -245,7 +262,7 @@ class KeyView(
                 MotionEvent.ACTION_CANCEL -> {
                     handler.removeCallbacks(longPressRunnable)
                     handler.removeCallbacks(repeatRunnable)
-                    if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview()
+                    if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview()
                     isLongPressing = false
                     dismissPopup()
                     v.isPressed = false
@@ -265,6 +282,7 @@ class KeyView(
             KeyType.NUM_TOGGLE -> listener.onToggleNumbers()
             KeyType.SYM_TOGGLE -> listener.onToggleSymbols()
             KeyType.LANG_SWITCH -> listener.onSwitchLanguage()
+            KeyType.PUNCT -> listener.onKeyText(currentPunct())
             KeyType.LETTER, KeyType.SPECIAL -> listener.onKeyText(label.text.toString())
         }
     }
@@ -293,6 +311,18 @@ class KeyView(
                 // isLongPressing stays true so release does not also switch the layout.
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 listener.onTransliterate()
+            }
+            keyDef.type == KeyType.PUNCT -> {
+                // Toggle the variable punctuation key to the other symbol, type it, and
+                // remember it as the new tap value. isLongPressing stays true so release
+                // doesn't also type the previous value.
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                listener.onHideKeyPreview()
+                val next = otherPunct()
+                variablePunct = next
+                listener.onKeyText(next)
+                label.text = next
+                hintLabel.text = otherPunct()
             }
         }
     }

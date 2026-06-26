@@ -91,12 +91,29 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     override fun onKeyDelete() {
         val ic = currentInputConnection ?: return
         val selected = ic.getSelectedText(0)
-        if (selected.isNullOrEmpty()) {
-            ic.deleteSurroundingText(1, 0)
-        } else {
+        if (!selected.isNullOrEmpty()) {
             ic.commitText("", 1)
+            updateSuggestions()
+            return
         }
+        // Delete one whole user-perceived character. Emoji are multi-unit (surrogate
+        // pairs / ZWJ sequences), so deleting a single UTF-16 unit would leave a
+        // dangling "�" and require a second press — delete the full grapheme instead.
+        val before = ic.getTextBeforeCursor(120, 0)
+        val units = if (before.isNullOrEmpty()) 1 else lastGraphemeUnitCount(before)
+        ic.deleteSurroundingText(units.coerceAtLeast(1), 0)
         updateSuggestions()
+    }
+
+    // Number of UTF-16 code units in the last grapheme cluster of the text.
+    private fun lastGraphemeUnitCount(text: CharSequence): Int {
+        val s = text.toString()
+        if (s.isEmpty()) return 1
+        val bi = android.icu.text.BreakIterator.getCharacterInstance()
+        bi.setText(s)
+        val end = s.length
+        val start = bi.preceding(end)
+        return if (start == android.icu.text.BreakIterator.DONE) end else end - start
     }
 
     override fun onKeyEnter() {

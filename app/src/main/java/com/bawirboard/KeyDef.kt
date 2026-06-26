@@ -2,7 +2,7 @@ package com.bawirboard
 
 import android.content.Context
 
-enum class KeyType { LETTER, SPECIAL, SPACE, DELETE, ENTER, SHIFT, NUM_TOGGLE, SYM_TOGGLE, LANG_SWITCH }
+enum class KeyType { LETTER, SPECIAL, SPACE, DELETE, ENTER, SHIFT, NUM_TOGGLE, SYM_TOGGLE, LANG_SWITCH, PUNCT }
 
 data class KeyDef(
     val label: String,
@@ -66,37 +66,41 @@ object KarakalpakLayout {
         KeyDef("123", type = KeyType.NUM_TOGGLE, widthWeight = 1.5f),
         KeyDef("", type = KeyType.LANG_SWITCH),
         KeyDef(" ", type = KeyType.SPACE, widthWeight = 5f),
-        KeyDef(".", "."),
+        KeyDef(".", type = KeyType.PUNCT),
         KeyDef("↵", type = KeyType.ENTER, widthWeight = 1.5f)
     )
 
-    // Russian ЙЦУКЕН layout for Karakalpak Cyrillic
+    // Russian ЙЦУКЕН layout for Karakalpak Cyrillic.
+    // The 11-key top rows get a slightly wider key weight so they don't look thin
+    // next to the wider 12-weight rows below.
+    private const val CYR_KEY_W = 1.09f
+
     val RUSSIAN_ROW1 = listOf(
-        KeyDef("й", "Й"),
-        KeyDef("ц", "Ц"),
-        KeyDef("у", "У", popupChars = listOf("ү", "ў"), popupCharsShiftedOverride = listOf("Ү", "Ў")),
-        KeyDef("к", "К", popupChars = listOf("қ"), popupCharsShiftedOverride = listOf("Қ")),
-        KeyDef("е", "Е", popupChars = listOf("ё"), popupCharsShiftedOverride = listOf("Ё")),
-        KeyDef("н", "Н", popupChars = listOf("ң"), popupCharsShiftedOverride = listOf("Ң")),
-        KeyDef("г", "Г", popupChars = listOf("ғ"), popupCharsShiftedOverride = listOf("Ғ")),
-        KeyDef("ш", "Ш"),
-        KeyDef("щ", "Щ"),
-        KeyDef("з", "З"),
-        KeyDef("х", "Х", popupChars = listOf("ҳ"), popupCharsShiftedOverride = listOf("Ҳ"))
+        KeyDef("й", "Й", widthWeight = CYR_KEY_W),
+        KeyDef("ц", "Ц", widthWeight = CYR_KEY_W),
+        KeyDef("у", "У", widthWeight = CYR_KEY_W, popupChars = listOf("ү", "ў"), popupCharsShiftedOverride = listOf("Ү", "Ў")),
+        KeyDef("к", "К", widthWeight = CYR_KEY_W, popupChars = listOf("қ"), popupCharsShiftedOverride = listOf("Қ")),
+        KeyDef("е", "Е", widthWeight = CYR_KEY_W, popupChars = listOf("ё"), popupCharsShiftedOverride = listOf("Ё")),
+        KeyDef("н", "Н", widthWeight = CYR_KEY_W, popupChars = listOf("ң"), popupCharsShiftedOverride = listOf("Ң")),
+        KeyDef("г", "Г", widthWeight = CYR_KEY_W, popupChars = listOf("ғ"), popupCharsShiftedOverride = listOf("Ғ")),
+        KeyDef("ш", "Ш", widthWeight = CYR_KEY_W),
+        KeyDef("щ", "Щ", widthWeight = CYR_KEY_W),
+        KeyDef("з", "З", widthWeight = CYR_KEY_W),
+        KeyDef("х", "Х", widthWeight = CYR_KEY_W, popupChars = listOf("ҳ"), popupCharsShiftedOverride = listOf("Ҳ"))
     )
 
     val RUSSIAN_ROW2 = listOf(
-        KeyDef("ф", "Ф"),
-        KeyDef("ы", "Ы"),
-        KeyDef("в", "В"),
-        KeyDef("а", "А", popupChars = listOf("ә"), popupCharsShiftedOverride = listOf("Ә")),
-        KeyDef("п", "П"),
-        KeyDef("р", "Р"),
-        KeyDef("о", "О", popupChars = listOf("ө"), popupCharsShiftedOverride = listOf("Ө")),
-        KeyDef("л", "Л"),
-        KeyDef("д", "Д"),
-        KeyDef("ж", "Ж"),
-        KeyDef("э", "Э")
+        KeyDef("ф", "Ф", widthWeight = CYR_KEY_W),
+        KeyDef("ы", "Ы", widthWeight = CYR_KEY_W),
+        KeyDef("в", "В", widthWeight = CYR_KEY_W),
+        KeyDef("а", "А", widthWeight = CYR_KEY_W, popupChars = listOf("ә"), popupCharsShiftedOverride = listOf("Ә")),
+        KeyDef("п", "П", widthWeight = CYR_KEY_W),
+        KeyDef("р", "Р", widthWeight = CYR_KEY_W),
+        KeyDef("о", "О", widthWeight = CYR_KEY_W, popupChars = listOf("ө"), popupCharsShiftedOverride = listOf("Ө")),
+        KeyDef("л", "Л", widthWeight = CYR_KEY_W),
+        KeyDef("д", "Д", widthWeight = CYR_KEY_W),
+        KeyDef("ж", "Ж", widthWeight = CYR_KEY_W),
+        KeyDef("э", "Э", widthWeight = CYR_KEY_W)
     )
 
     val RUSSIAN_ROW3 = listOf(
@@ -118,9 +122,9 @@ object KarakalpakLayout {
     // of leaving side gaps (total weight 12 matches the widest Cyrillic row).
     val RUSSIAN_ROW4 = listOf(
         KeyDef("123", type = KeyType.NUM_TOGGLE, widthWeight = 2f),
-        KeyDef("", type = KeyType.LANG_SWITCH, widthWeight = 2f),
-        KeyDef(" ", type = KeyType.SPACE, widthWeight = 5f),
-        KeyDef(".", "."),
+        KeyDef("", type = KeyType.LANG_SWITCH, widthWeight = 1.5f),
+        KeyDef(" ", type = KeyType.SPACE, widthWeight = 5.5f),
+        KeyDef(".", type = KeyType.PUNCT),
         KeyDef("↵", type = KeyType.ENTER, widthWeight = 2f)
     )
 
