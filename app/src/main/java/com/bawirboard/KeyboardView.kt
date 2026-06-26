@@ -1176,6 +1176,7 @@ class KeyboardView(
 
     fun currentMode() = mode
     fun currentShift() = shiftState
+    fun currentLanguage() = language
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()

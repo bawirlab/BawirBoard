@@ -145,6 +145,9 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onSwitchLanguage() {
         keyboardView?.switchLanguage()
+        // Cyrillic has no suggestion data, so refresh to drop the strip back to the toolbar
+        // (and recompute Latin suggestions when switching back).
+        updateSuggestions()
     }
 
     override fun onTransliterate() {
@@ -186,6 +189,11 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         if (!SuggestionEngine.isLoaded) return
         val kb = keyboardView ?: return
         if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
+            kb.showSuggestions(emptyList())
+            return
+        }
+        // The suggestion dictionary is Latin-only; in Cyrillic keep just the toolbar.
+        if (kb.currentLanguage() == KeyboardView.Language.RUSSIAN) {
             kb.showSuggestions(emptyList())
             return
         }

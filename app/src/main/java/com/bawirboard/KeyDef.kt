@@ -113,8 +113,19 @@ object KarakalpakLayout {
         KeyDef("⌫", type = KeyType.DELETE, widthWeight = 1.5f)
     )
 
+    // Cyrillic bottom row: the letter rows are wider (11–12 weight) than the Latin
+    // ones, so 123/globe/enter are widened here to fill the row edge-to-edge instead
+    // of leaving side gaps (total weight 12 matches the widest Cyrillic row).
+    val RUSSIAN_ROW4 = listOf(
+        KeyDef("123", type = KeyType.NUM_TOGGLE, widthWeight = 2f),
+        KeyDef("", type = KeyType.LANG_SWITCH, widthWeight = 2f),
+        KeyDef(" ", type = KeyType.SPACE, widthWeight = 5f),
+        KeyDef(".", "."),
+        KeyDef("↵", type = KeyType.ENTER, widthWeight = 2f)
+    )
+
     fun getRussianRows(context: Context): List<List<KeyDef>> {
-        val base = listOf(RUSSIAN_ROW1, RUSSIAN_ROW2, RUSSIAN_ROW3, LETTERS_ROW4)
+        val base = listOf(RUSSIAN_ROW1, RUSSIAN_ROW2, RUSSIAN_ROW3, RUSSIAN_ROW4)
         return if (PrefsManager.isNumberRowEnabled(context)) listOf(NUMBER_ROW) + base else base
     }
 
