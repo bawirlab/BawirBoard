@@ -22,6 +22,7 @@ class KeyboardView(
         fun onToggleNumbers()
         fun onToggleSymbols()
         fun onSwitchKeyboard()
+        fun onSwitchLanguage()
         fun onOpenSettings()
         fun onDismissKeyboard()
         fun onShowKeyPreview(anchor: View, char: String)
@@ -31,21 +32,26 @@ class KeyboardView(
 
     enum class Mode { LETTERS, NUMBERS, SYMBOLS }
     enum class ShiftState { OFF, ON, CAPS_LOCK }
+    enum class Language { LATIN, RUSSIAN }
 
     private var mode = Mode.LETTERS
     private var shiftState = ShiftState.OFF
+    private var language = Language.LATIN
 
     private val letterKeyRows = mutableListOf<List<KeyView>>()
+    private val russianKeyRows = mutableListOf<List<KeyView>>()
     private val numberKeyRows = mutableListOf<List<KeyView>>()
     private val symbolKeyRows = mutableListOf<List<KeyView>>()
 
     private val lettersContainer = LinearLayout(context).apply { orientation = VERTICAL }
+    private val russianContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val numbersContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val symbolsContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val allKeyContainer = LinearLayout(context).apply { orientation = VERTICAL }
 
     private var numbersBuilt = false
     private var symbolsBuilt = false
+    private var russianBuilt = false
 
     // Inline settings panel (built lazily)
     private var settingsPanel: LinearLayout? = null
@@ -96,6 +102,7 @@ class KeyboardView(
         addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
 
         allKeyContainer.addView(lettersContainer)
+        allKeyContainer.addView(russianContainer)
         allKeyContainer.addView(numbersContainer)
         allKeyContainer.addView(symbolsContainer)
         addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
@@ -476,21 +483,26 @@ class KeyboardView(
         addView(suggestionBar, LayoutParams(LayoutParams.MATCH_PARENT, 40.dp))
 
         letterKeyRows.clear()
+        russianKeyRows.clear()
         numberKeyRows.clear()
         symbolKeyRows.clear()
         lettersContainer.removeAllViews()
+        russianContainer.removeAllViews()
         numbersContainer.removeAllViews()
         symbolsContainer.removeAllViews()
         numbersBuilt = false
         symbolsBuilt = false
+        russianBuilt = false
 
         buildLetterContent()
 
-        lettersContainer.visibility = if (mode == Mode.LETTERS) VISIBLE else GONE
+        lettersContainer.visibility = if (mode == Mode.LETTERS && language == Language.LATIN) VISIBLE else GONE
+        russianContainer.visibility = if (mode == Mode.LETTERS && language == Language.RUSSIAN) VISIBLE else GONE
         numbersContainer.visibility = if (mode == Mode.NUMBERS) VISIBLE else GONE
         symbolsContainer.visibility = if (mode == Mode.SYMBOLS) VISIBLE else GONE
 
-        // Rebuild numbers/symbols if they were visible before
+        // Rebuild containers that were visible before
+        if (mode == Mode.LETTERS && language == Language.RUSSIAN) buildRussianContent()
         if (mode == Mode.NUMBERS) buildNumberContent()
         if (mode == Mode.SYMBOLS) buildSymbolContent()
 
@@ -502,6 +514,7 @@ class KeyboardView(
 
     private fun rebuildAll() {
         buildLetterContent()
+        if (russianBuilt) buildRussianContent()
         if (numbersBuilt) buildNumberContent()
         if (symbolsBuilt) buildSymbolContent()
         applyShiftToKeys()
@@ -509,6 +522,7 @@ class KeyboardView(
 
     fun rebuildLetterLayout() {
         buildLetterContent()
+        if (russianBuilt) buildRussianContent()
         applyShiftToKeys()
     }
 
@@ -937,6 +951,23 @@ class KeyboardView(
         buildRowsInto(lettersContainer, KarakalpakLayout.getLetterRows(context), letterKeyRows)
     }
 
+    private fun buildRussianContent() {
+        russianContainer.removeAllViews()
+        russianKeyRows.clear()
+        buildRowsInto(russianContainer, KarakalpakLayout.getRussianRows(context), russianKeyRows)
+        russianBuilt = true
+    }
+
+    fun switchLanguage() {
+        language = if (language == Language.LATIN) Language.RUSSIAN else Language.LATIN
+        if (mode == Mode.LETTERS) {
+            if (language == Language.RUSSIAN && !russianBuilt) buildRussianContent()
+            lettersContainer.visibility = if (language == Language.LATIN) VISIBLE else GONE
+            russianContainer.visibility = if (language == Language.RUSSIAN) VISIBLE else GONE
+            applyShiftToKeys()
+        }
+    }
+
     private fun buildNumberContent() {
         numbersContainer.removeAllViews()
         numberKeyRows.clear()
@@ -983,7 +1014,8 @@ class KeyboardView(
         if (newMode == Mode.SYMBOLS && !symbolsBuilt) buildSymbolContent()
 
         mode = newMode
-        lettersContainer.visibility = if (mode == Mode.LETTERS) VISIBLE else GONE
+        lettersContainer.visibility = if (mode == Mode.LETTERS && language == Language.LATIN) VISIBLE else GONE
+        russianContainer.visibility = if (mode == Mode.LETTERS && language == Language.RUSSIAN) VISIBLE else GONE
         numbersContainer.visibility = if (mode == Mode.NUMBERS) VISIBLE else GONE
         symbolsContainer.visibility = if (mode == Mode.SYMBOLS) VISIBLE else GONE
         applyShiftToKeys()
@@ -997,7 +1029,7 @@ class KeyboardView(
 
     private fun applyShiftToKeys() {
         val shifted = shiftState != ShiftState.OFF
-        letterKeyRows.forEach { row ->
+        (letterKeyRows + russianKeyRows).forEach { row ->
             row.forEach { kv ->
                 kv.updateShiftState(shifted)
                 kv.updateShiftKeyAppearance(shifted, shiftState == ShiftState.CAPS_LOCK)

@@ -125,6 +125,10 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         imm.showInputMethodPicker()
     }
 
+    override fun onSwitchLanguage() {
+        keyboardView?.switchLanguage()
+    }
+
     override fun onSuggestionTapped(word: String) {
         val ic = currentInputConnection ?: return
         val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: return

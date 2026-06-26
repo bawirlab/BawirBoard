@@ -2,7 +2,7 @@ package com.bawirboard
 
 import android.content.Context
 
-enum class KeyType { LETTER, SPECIAL, SPACE, DELETE, ENTER, SHIFT, NUM_TOGGLE, SYM_TOGGLE }
+enum class KeyType { LETTER, SPECIAL, SPACE, DELETE, ENTER, SHIFT, NUM_TOGGLE, SYM_TOGGLE, LANG_SWITCH }
 
 data class KeyDef(
     val label: String,
@@ -64,11 +64,59 @@ object KarakalpakLayout {
 
     val LETTERS_ROW4 = listOf(
         KeyDef("123", type = KeyType.NUM_TOGGLE, widthWeight = 1.5f),
-        KeyDef(",", ","),
+        KeyDef("", type = KeyType.LANG_SWITCH),
         KeyDef(" ", type = KeyType.SPACE, widthWeight = 5f),
         KeyDef(".", "."),
         KeyDef("↵", type = KeyType.ENTER, widthWeight = 1.5f)
     )
+
+    // Russian ЙЦУКЕН layout for Karakalpak Cyrillic
+    val RUSSIAN_ROW1 = listOf(
+        KeyDef("й", "Й"),
+        KeyDef("ц", "Ц"),
+        KeyDef("у", "У", popupChars = listOf("ү", "ў"), popupCharsShiftedOverride = listOf("Ү", "Ў")),
+        KeyDef("к", "К", popupChars = listOf("қ"), popupCharsShiftedOverride = listOf("Қ")),
+        KeyDef("е", "Е", popupChars = listOf("ё"), popupCharsShiftedOverride = listOf("Ё")),
+        KeyDef("н", "Н", popupChars = listOf("ң"), popupCharsShiftedOverride = listOf("Ң")),
+        KeyDef("г", "Г", popupChars = listOf("ғ"), popupCharsShiftedOverride = listOf("Ғ")),
+        KeyDef("ш", "Ш"),
+        KeyDef("щ", "Щ"),
+        KeyDef("з", "З"),
+        KeyDef("х", "Х", popupChars = listOf("ҳ"), popupCharsShiftedOverride = listOf("Ҳ"))
+    )
+
+    val RUSSIAN_ROW2 = listOf(
+        KeyDef("ф", "Ф"),
+        KeyDef("ы", "Ы"),
+        KeyDef("в", "В"),
+        KeyDef("а", "А", popupChars = listOf("ә"), popupCharsShiftedOverride = listOf("Ә")),
+        KeyDef("п", "П"),
+        KeyDef("р", "Р"),
+        KeyDef("о", "О", popupChars = listOf("ө"), popupCharsShiftedOverride = listOf("Ө")),
+        KeyDef("л", "Л"),
+        KeyDef("д", "Д"),
+        KeyDef("ж", "Ж"),
+        KeyDef("э", "Э")
+    )
+
+    val RUSSIAN_ROW3 = listOf(
+        KeyDef("⇧", type = KeyType.SHIFT, widthWeight = 1.5f),
+        KeyDef("я", "Я"),
+        KeyDef("ч", "Ч"),
+        KeyDef("с", "С"),
+        KeyDef("м", "М"),
+        KeyDef("и", "И"),
+        KeyDef("т", "Т"),
+        KeyDef("ь", "Ь", popupChars = listOf("ъ"), popupCharsShiftedOverride = listOf("Ъ")),
+        KeyDef("б", "Б"),
+        KeyDef("ю", "Ю"),
+        KeyDef("⌫", type = KeyType.DELETE, widthWeight = 1.5f)
+    )
+
+    fun getRussianRows(context: Context): List<List<KeyDef>> {
+        val base = listOf(RUSSIAN_ROW1, RUSSIAN_ROW2, RUSSIAN_ROW3, LETTERS_ROW4)
+        return if (PrefsManager.isNumberRowEnabled(context)) listOf(NUMBER_ROW) + base else base
+    }
 
     val NUMBERS_ROW1 = listOf(
         KeyDef("1", type = KeyType.SPECIAL), KeyDef("2", type = KeyType.SPECIAL),

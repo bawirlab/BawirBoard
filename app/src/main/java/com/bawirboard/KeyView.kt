@@ -74,7 +74,8 @@ class KeyView(
         })
 
         // Icon keys use an ImageView overlay; text label is hidden
-        if (keyDef.type == KeyType.SHIFT || keyDef.type == KeyType.DELETE || keyDef.type == KeyType.ENTER) {
+        if (keyDef.type == KeyType.SHIFT || keyDef.type == KeyType.DELETE ||
+            keyDef.type == KeyType.ENTER || keyDef.type == KeyType.LANG_SWITCH) {
             iconView = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
@@ -126,7 +127,8 @@ class KeyView(
 
         val textColor = when (keyDef.type) {
             KeyType.ENTER -> 0xFFFFFFFF.toInt()
-            KeyType.SHIFT, KeyType.DELETE, KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE -> colorSpecialText()
+            KeyType.SHIFT, KeyType.DELETE, KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE,
+            KeyType.LANG_SWITCH -> colorSpecialText()
             else -> colorKeyText()
         }
 
@@ -165,6 +167,7 @@ class KeyView(
             KeyType.SHIFT -> R.drawable.ic_shift_outline
             KeyType.DELETE -> R.drawable.ic_backspace
             KeyType.ENTER -> R.drawable.ic_enter
+            KeyType.LANG_SWITCH -> R.drawable.ic_globe
             else -> return
         }
         val d = context.getDrawable(resId)?.mutate()
@@ -260,6 +263,7 @@ class KeyView(
             KeyType.SPACE -> listener.onKeyText(" ")
             KeyType.NUM_TOGGLE -> listener.onToggleNumbers()
             KeyType.SYM_TOGGLE -> listener.onToggleSymbols()
+            KeyType.LANG_SWITCH -> listener.onSwitchLanguage()
             KeyType.LETTER, KeyType.SPECIAL -> listener.onKeyText(label.text.toString())
         }
     }
