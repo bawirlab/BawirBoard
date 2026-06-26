@@ -23,6 +23,7 @@ class KeyboardView(
         fun onToggleSymbols()
         fun onSwitchKeyboard()
         fun onSwitchLanguage()
+        fun onTransliterate()
         fun onOpenSettings()
         fun onDismissKeyboard()
         fun onShowKeyPreview(anchor: View, char: String)

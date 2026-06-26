@@ -287,6 +287,12 @@ class KeyView(
                 listener.onSwitchKeyboard()
                 isLongPressing = false
             }
+            keyDef.type == KeyType.LANG_SWITCH -> {
+                // Long-press the globe: transliterate the whole field between scripts.
+                // isLongPressing stays true so release does not also switch the layout.
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                listener.onTransliterate()
+            }
         }
     }
 

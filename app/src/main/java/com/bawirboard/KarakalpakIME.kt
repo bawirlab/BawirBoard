@@ -17,6 +17,8 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private var lastNumberRowSetting = false
     private var lastDarkMode = true
 
+    private val MAX_TRANSLIT_CHARS = 10000
+
     override fun onCreateInputView(): View {
         SuggestionEngine.load(this) { updateSuggestions() }
         val kb = KeyboardView(this, this)
@@ -127,6 +129,23 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onSwitchLanguage() {
         keyboardView?.switchLanguage()
+    }
+
+    override fun onTransliterate() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(MAX_TRANSLIT_CHARS, 0)?.toString() ?: ""
+        val after = ic.getTextAfterCursor(MAX_TRANSLIT_CHARS, 0)?.toString() ?: ""
+        val full = before + after
+        if (full.isEmpty()) return
+
+        val translated = Transliterator.autoTransliterate(full)
+        if (translated == full) return
+
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(before.length, after.length)
+        ic.commitText(translated, 1)
+        ic.endBatchEdit()
+        updateSuggestions()
     }
 
     override fun onSuggestionTapped(word: String) {
