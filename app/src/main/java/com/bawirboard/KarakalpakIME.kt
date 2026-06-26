@@ -15,6 +15,8 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private var lastNumberRowSetting = false
     private var lastDarkMode = true
 
+    private val MAX_TRANSLIT_CHARS = 10000
+
     private var clipboardManager: ClipboardManager? = null
     private val clipChangedListener = ClipboardManager.OnPrimaryClipChangedListener { captureClipboard() }
 
@@ -139,6 +141,27 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     override fun onSwitchKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showInputMethodPicker()
+    }
+
+    override fun onSwitchLanguage() {
+        keyboardView?.switchLanguage()
+    }
+
+    override fun onTransliterate() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(MAX_TRANSLIT_CHARS, 0)?.toString() ?: ""
+        val after = ic.getTextAfterCursor(MAX_TRANSLIT_CHARS, 0)?.toString() ?: ""
+        val full = before + after
+        if (full.isEmpty()) return
+
+        val translated = Transliterator.autoTransliterate(full)
+        if (translated == full) return
+
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(before.length, after.length)
+        ic.commitText(translated, 1)
+        ic.endBatchEdit()
+        updateSuggestions()
     }
 
     override fun onSuggestionTapped(word: String) {
