@@ -197,7 +197,7 @@ class KeyboardView(
         }
     }
 
-    private fun showToolbar() {
+    fun showToolbar() {
         if (!::topBar.isInitialized) return
         suggestionBar.visibility = GONE
         toolbarView.visibility = VISIBLE
@@ -281,8 +281,7 @@ class KeyboardView(
         }
         // While a panel is open the top bar stays on the toolbar; don't flip it.
         if (settingsShowing || emojiShowing || clipboardShowing) return
-        // Swap to suggestions when there is something to show, otherwise the toolbar.
-        if (words.isEmpty()) showToolbar() else showSuggestionBar()
+        showSuggestionBar()
     }
 
     // ── Toolbar ────────────────────────────────────────────────────────────

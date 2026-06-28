@@ -207,15 +207,17 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         val kb = keyboardView ?: return
         if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
             kb.showSuggestions(emptyList())
+            kb.showToolbar()
             return
         }
         // The suggestion dictionary is Latin-only; in Cyrillic keep just the toolbar.
         if (kb.currentLanguage() == KeyboardView.Language.RUSSIAN) {
             kb.showSuggestions(emptyList())
+            kb.showToolbar()
             return
         }
-        val ic = currentInputConnection ?: run { kb.showSuggestions(emptyList()); return }
-        val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: run { kb.showSuggestions(emptyList()); return }
+        val ic = currentInputConnection ?: run { kb.showSuggestions(emptyList()); kb.showToolbar(); return }
+        val before = ic.getTextBeforeCursor(100, 0)?.toString() ?: run { kb.showSuggestions(emptyList()); kb.showToolbar(); return }
 
         val typingWord = before.isNotEmpty() && before.last().isLetter()
         val suggestions = if (typingWord) {
@@ -228,7 +230,10 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
             // the next word from the last typed word, ignoring any punctuation between.
             val context = lastLetterWord(before)
             if (context.isEmpty()) {
-                emptyList()
+                // No text in field yet — show toolbar until user starts typing.
+                kb.showSuggestions(emptyList())
+                kb.showToolbar()
+                return
             } else {
                 val next = SuggestionEngine.getNextWords(context)
                 if (next.isNotEmpty()) next else SuggestionEngine.getDefaultNextWords()
