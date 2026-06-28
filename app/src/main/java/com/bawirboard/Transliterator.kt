@@ -8,12 +8,18 @@ package com.bawirboard
  */
 object Transliterator {
 
+    // Latin -> Cyrillic 4-char sequences, matched before digraphs.
+    private val latinTetragraphs = mapOf(
+        "Shsh" to "Щ", "SHSH" to "Щ", "shsh" to "щ"
+    )
+
     // Latin -> Cyrillic multi-character sequences, matched greedily before singles.
     private val latinDigraphs = mapOf(
-        "Sh" to "Щ", "SH" to "Щ", "sh" to "щ",
+        "Sh" to "Ш", "SH" to "Ш", "sh" to "ш",
         "Ch" to "Ч", "CH" to "Ч", "ch" to "ч",
         "Ya" to "Я", "YA" to "Я", "ya" to "я",
-        "Yu" to "Ю", "YU" to "Ю", "yu" to "ю"
+        "Yu" to "Ю", "YU" to "Ю", "yu" to "ю",
+        "Yo" to "Ё", "YO" to "Ё", "yo" to "ё"
     )
 
     private val latinSingles = mapOf(
@@ -99,7 +105,16 @@ object Transliterator {
         val sb = StringBuilder(text.length)
         var i = 0
         while (i < text.length) {
-            if (i + 1 < text.length) {
+            if (i + 4 <= text.length) {
+                val quad = text.substring(i, i + 4)
+                val rep = latinTetragraphs[quad]
+                if (rep != null) {
+                    sb.append(rep)
+                    i += 4
+                    continue
+                }
+            }
+            if (i + 2 <= text.length) {
                 val pair = text.substring(i, i + 2)
                 val rep = latinDigraphs[pair]
                 if (rep != null) {
