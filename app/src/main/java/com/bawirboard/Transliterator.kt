@@ -60,6 +60,7 @@ object Transliterator {
     // Cyrillic -> Latin. Each Cyrillic letter is a single char; output may be multi-char.
     private val cyrillicSingles = mapOf(
         'Й' to "Y", 'й' to "y",
+        'И' to "I", 'и' to "i",
         'Ц' to "C", 'ц' to "c",
         'У' to "W", 'у' to "w",
         'К' to "K", 'к' to "k",
