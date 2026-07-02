@@ -18,6 +18,7 @@ class KeyboardView(
         fun onKeyText(text: String)
         fun onKeyDelete()
         fun onKeyEnter()
+        fun onKeyEnterLongPress()
         fun onKeyShift()
         fun onToggleNumbers()
         fun onToggleSymbols()
@@ -31,7 +32,7 @@ class KeyboardView(
         fun onSuggestionTapped(word: String)
     }
 
-    enum class Mode { LETTERS, NUMBERS, SYMBOLS }
+    enum class Mode { LETTERS, NUMBERS, SYMBOLS, NUMPAD }
     enum class ShiftState { OFF, ON, CAPS_LOCK }
     enum class Language { LATIN, RUSSIAN }
 
@@ -43,16 +44,20 @@ class KeyboardView(
     private val russianKeyRows = mutableListOf<List<KeyView>>()
     private val numberKeyRows = mutableListOf<List<KeyView>>()
     private val symbolKeyRows = mutableListOf<List<KeyView>>()
+    private val numpadKeyRows = mutableListOf<List<KeyView>>()
 
     private val lettersContainer = LinearLayout(context).apply { orientation = VERTICAL }
     private val russianContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val numbersContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val symbolsContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
+    private val numpadContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private val allKeyContainer = LinearLayout(context).apply { orientation = VERTICAL }
 
     private var numbersBuilt = false
     private var symbolsBuilt = false
     private var russianBuilt = false
+    private var numpadBuilt = false
+    private var numpadPhone = false
 
     // Inline settings panel (built lazily)
     private var settingsPanel: LinearLayout? = null
@@ -107,6 +112,7 @@ class KeyboardView(
         allKeyContainer.addView(russianContainer)
         allKeyContainer.addView(numbersContainer)
         allKeyContainer.addView(symbolsContainer)
+        allKeyContainer.addView(numpadContainer)
         addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
         buildLetterContent()
@@ -561,13 +567,16 @@ class KeyboardView(
         russianKeyRows.clear()
         numberKeyRows.clear()
         symbolKeyRows.clear()
+        numpadKeyRows.clear()
         lettersContainer.removeAllViews()
         russianContainer.removeAllViews()
         numbersContainer.removeAllViews()
         symbolsContainer.removeAllViews()
+        numpadContainer.removeAllViews()
         numbersBuilt = false
         symbolsBuilt = false
         russianBuilt = false
+        numpadBuilt = false
 
         buildLetterContent()
 
@@ -575,11 +584,13 @@ class KeyboardView(
         russianContainer.visibility = if (mode == Mode.LETTERS && language == Language.RUSSIAN) VISIBLE else GONE
         numbersContainer.visibility = if (mode == Mode.NUMBERS) VISIBLE else GONE
         symbolsContainer.visibility = if (mode == Mode.SYMBOLS) VISIBLE else GONE
+        numpadContainer.visibility = if (mode == Mode.NUMPAD) VISIBLE else GONE
 
         // Rebuild containers that were visible before
         if (mode == Mode.LETTERS && language == Language.RUSSIAN) buildRussianContent()
         if (mode == Mode.NUMBERS) buildNumberContent()
         if (mode == Mode.SYMBOLS) buildSymbolContent()
+        if (mode == Mode.NUMPAD) buildNumpadContent()
 
         addView(allKeyContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         setupPreview()
@@ -592,6 +603,7 @@ class KeyboardView(
         if (russianBuilt) buildRussianContent()
         if (numbersBuilt) buildNumberContent()
         if (symbolsBuilt) buildSymbolContent()
+        if (numpadBuilt) buildNumpadContent()
         applyShiftToKeys()
     }
 
@@ -1112,6 +1124,29 @@ class KeyboardView(
         symbolsBuilt = true
     }
 
+    private fun buildNumpadContent() {
+        numpadContainer.removeAllViews()
+        numpadKeyRows.clear()
+        buildRowsInto(numpadContainer, KarakalpakLayout.numpadRows(numpadPhone), numpadKeyRows)
+        numpadBuilt = true
+    }
+
+    // Shows the digit-only keypad, used for fields whose inputType is
+    // number/datetime (phone = false) or phone (phone = true).
+    fun switchToNumpad(phone: Boolean) {
+        if (!numpadBuilt || numpadPhone != phone) {
+            numpadPhone = phone
+            buildNumpadContent()
+        }
+        mode = Mode.NUMPAD
+        lettersContainer.visibility = GONE
+        russianContainer.visibility = GONE
+        numbersContainer.visibility = GONE
+        symbolsContainer.visibility = GONE
+        numpadContainer.visibility = VISIBLE
+        showSuggestions(emptyList())
+    }
+
     private fun buildRowsInto(
         container: LinearLayout,
         rows: List<List<KeyDef>>,
@@ -1165,6 +1200,7 @@ class KeyboardView(
         russianContainer.visibility = if (mode == Mode.LETTERS && language == Language.RUSSIAN) VISIBLE else GONE
         numbersContainer.visibility = if (mode == Mode.NUMBERS) VISIBLE else GONE
         symbolsContainer.visibility = if (mode == Mode.SYMBOLS) VISIBLE else GONE
+        numpadContainer.visibility = if (mode == Mode.NUMPAD) VISIBLE else GONE
         applyShiftToKeys()
         if (mode != Mode.LETTERS) showSuggestions(emptyList())
     }

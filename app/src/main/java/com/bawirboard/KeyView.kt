@@ -317,6 +317,13 @@ class KeyView(
                 listener.onSwitchKeyboard()
                 isLongPressing = false
             }
+            keyDef.type == KeyType.ENTER -> {
+                // Tap types a newline in text fields; the field's send/go/next
+                // action lives on long-press. isLongPressing stays true so the
+                // release doesn't also insert a newline.
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                listener.onKeyEnterLongPress()
+            }
             keyDef.type == KeyType.LANG_SWITCH -> {
                 // Long-press the globe: transliterate the whole field between scripts.
                 // isLongPressing stays true so release does not also switch the layout.
