@@ -29,6 +29,18 @@ object PrefsManager {
     fun getClipboardHistory(ctx: Context) = prefs(ctx).getString("clipboard_history", "") ?: ""
     fun setClipboardHistory(ctx: Context, v: String) = prefs(ctx).edit().putString("clipboard_history", v).apply()
 
+    fun isSuggestionsEnabled(ctx: Context) = prefs(ctx).getBoolean("suggestions", true)
+    fun setSuggestionsEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("suggestions", v).apply()
+
+    fun isKeyVibrationEnabled(ctx: Context) = prefs(ctx).getBoolean("key_vibration", true)
+    fun setKeyVibrationEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("key_vibration", v).apply()
+
+    fun isKeySoundEnabled(ctx: Context) = prefs(ctx).getBoolean("key_sound", false)
+    fun setKeySoundEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("key_sound", v).apply()
+
+    fun getRecentEmojis(ctx: Context) = prefs(ctx).getString("recent_emojis", "") ?: ""
+    fun setRecentEmojis(ctx: Context, v: String) = prefs(ctx).edit().putString("recent_emojis", v).apply()
+
     fun accentColorFor(theme: String): Int = when (theme) {
         "purple" -> 0xFF7C4DFF.toInt()
         "green"  -> 0xFF00BFA5.toInt()

@@ -2,11 +2,15 @@ package com.bawirboard
 
 import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.text.InputType
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import androidx.emoji2.bundled.BundledEmojiCompatConfig
+import androidx.emoji2.text.EmojiCompat
 
 class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
@@ -22,6 +26,12 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onCreate() {
         super.onCreate()
+        // Bundled emoji font so the emoji panel can render current emoji designs
+        // even on devices whose system font predates them. init() is a no-op when
+        // already initialized; failures just leave system glyphs in place.
+        try {
+            EmojiCompat.init(BundledEmojiCompatConfig(this).setReplaceAll(true))
+        } catch (_: Throwable) { }
         clipboardManager = (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)?.also {
             it.addPrimaryClipChangedListener(clipChangedListener)
         }
@@ -200,6 +210,12 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         ic.deleteSurroundingText(before.length, after.length)
         ic.commitText(translated, 1)
         ic.endBatchEdit()
+        // A small confirmation tick so the script switch is felt, not just seen.
+        if (PrefsManager.isKeyVibrationEnabled(this)) {
+            val fb = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.KEYBOARD_TAP
+            keyboardView?.performHapticFeedback(fb)
+        }
         updateSuggestions()
     }
 
@@ -224,6 +240,11 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private fun updateSuggestions() {
         if (!SuggestionEngine.isLoaded) return
         val kb = keyboardView ?: return
+        if (!PrefsManager.isSuggestionsEnabled(this)) {
+            kb.showSuggestions(emptyList())
+            kb.showToolbar()
+            return
+        }
         if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
             kb.showSuggestions(emptyList())
             kb.showToolbar()
@@ -282,7 +303,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         keyboardView?.showKeyPreview(anchor, char)
     }
 
-    override fun onHideKeyPreview() {
-        keyboardView?.hideKeyPreview()
+    override fun onHideKeyPreview(anchor: View?) {
+        keyboardView?.hideKeyPreview(anchor)
     }
 }

@@ -5,8 +5,12 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.SparseArray
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.*
 
 class KeyboardView(
@@ -28,7 +32,7 @@ class KeyboardView(
         fun onOpenSettings()
         fun onDismissKeyboard()
         fun onShowKeyPreview(anchor: View, char: String)
-        fun onHideKeyPreview()
+        fun onHideKeyPreview(anchor: View? = null)
         fun onSuggestionTapped(word: String)
     }
 
@@ -46,11 +50,11 @@ class KeyboardView(
     private val symbolKeyRows = mutableListOf<List<KeyView>>()
     private val numpadKeyRows = mutableListOf<List<KeyView>>()
 
-    private val lettersContainer = LinearLayout(context).apply { orientation = VERTICAL }
-    private val russianContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
-    private val numbersContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
-    private val symbolsContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
-    private val numpadContainer = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
+    private val lettersContainer: LinearLayout = KeysPanel(context)
+    private val russianContainer: LinearLayout = KeysPanel(context).apply { visibility = GONE }
+    private val numbersContainer: LinearLayout = KeysPanel(context).apply { visibility = GONE }
+    private val symbolsContainer: LinearLayout = KeysPanel(context).apply { visibility = GONE }
+    private val numpadContainer: LinearLayout = KeysPanel(context).apply { visibility = GONE }
     private val allKeyContainer = LinearLayout(context).apply { orientation = VERTICAL }
 
     private var numbersBuilt = false
@@ -63,10 +67,12 @@ class KeyboardView(
     private var settingsPanel: LinearLayout? = null
     private var settingsShowing = false
 
-    // Inline emoji panel (built lazily)
+    // Inline emoji panel (built lazily). Recents persist across keyboard rebuilds.
     private var emojiPanel: LinearLayout? = null
     private var emojiShowing = false
-    private val recentEmojis = mutableListOf<String>()
+    private val recentEmojis = mutableListOf<String>().apply {
+        addAll(PrefsManager.getRecentEmojis(context).split(" ").filter { it.isNotBlank() })
+    }
 
     // Inline clipboard panel
     private var clipboardPanel: LinearLayout? = null
@@ -88,7 +94,7 @@ class KeyboardView(
     private val accentColor get() = PrefsManager.accentColorFor(PrefsManager.getColorTheme(context))
 
     private val keyHeightPx: Int
-        get() = (48 * resources.displayMetrics.density * PrefsManager.getKeyHeightScale(context) + 0.5f).toInt()
+        get() = (54 * resources.displayMetrics.density * PrefsManager.getKeyHeightScale(context) + 0.5f).toInt()
 
     // Horizontal padding per row based on width scale (0 = full width, positive = narrower keys)
     private val rowHPad: Int
@@ -117,6 +123,104 @@ class KeyboardView(
 
         buildLetterContent()
         setupPreview()
+    }
+
+    // ── Multi-touch key panel ──────────────────────────────────────────────
+    // Container for key rows that owns ALL touch handling. With per-key touch
+    // listeners Android routes the entire gesture to the first key that went down,
+    // so a second finger landing before the first lifts (fast typing) never reaches
+    // its key and the letter is dropped. This panel dispatches events per pointer
+    // id, and hit-tests to the nearest key so the small gaps between keys and the
+    // spacer strips at row edges are never dead zones.
+    private class KeysPanel(context: Context) : LinearLayout(context) {
+
+        private val activeKeys = SparseArray<KeyView>()
+        private val screenLoc = IntArray(2)
+
+        init {
+            orientation = VERTICAL
+        }
+
+        override fun onInterceptTouchEvent(ev: MotionEvent) = true
+
+        override fun onTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                    val i = ev.actionIndex
+                    findKeyAt(ev.getX(i), ev.getY(i))?.let { kv ->
+                        activeKeys.put(ev.getPointerId(i), kv)
+                        kv.handleDown()
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    getLocationOnScreen(screenLoc)
+                    for (i in 0 until ev.pointerCount) {
+                        activeKeys.get(ev.getPointerId(i))?.handleMove(screenLoc[0] + ev.getX(i))
+                    }
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    val id = ev.getPointerId(ev.actionIndex)
+                    activeKeys.get(id)?.handleUp()
+                    activeKeys.remove(id)
+                }
+                MotionEvent.ACTION_UP -> {
+                    val id = ev.getPointerId(ev.actionIndex)
+                    activeKeys.get(id)?.handleUp()
+                    activeKeys.remove(id)
+                    releaseAll(cancel = true)
+                }
+                MotionEvent.ACTION_CANCEL -> releaseAll(cancel = true)
+            }
+            return true
+        }
+
+        private fun releaseAll(cancel: Boolean) {
+            for (i in activeKeys.size() - 1 downTo 0) {
+                val kv = activeKeys.valueAt(i)
+                if (cancel) kv.handleCancel() else kv.handleUp()
+            }
+            activeKeys.clear()
+        }
+
+        private fun findKeyAt(x: Float, y: Float): KeyView? {
+            val row = rowAt(y) ?: return null
+            val rx = x - row.left
+            var best: KeyView? = null
+            var bestDist = Float.MAX_VALUE
+            for (i in 0 until row.childCount) {
+                val k = row.getChildAt(i) as? KeyView ?: continue
+                val d = when {
+                    rx < k.left -> k.left - rx
+                    rx > k.right -> rx - k.right
+                    else -> return k
+                }
+                if (d < bestDist) {
+                    bestDist = d
+                    best = k
+                }
+            }
+            return best
+        }
+
+        // The row containing y, or the nearest one when y falls on an edge.
+        private fun rowAt(y: Float): ViewGroup? {
+            var best: ViewGroup? = null
+            var bestDist = Float.MAX_VALUE
+            for (i in 0 until childCount) {
+                val c = getChildAt(i) as? ViewGroup ?: continue
+                if (c.visibility != VISIBLE) continue
+                val d = when {
+                    y < c.top -> c.top - y
+                    y > c.bottom -> y - c.bottom
+                    else -> return c
+                }
+                if (d < bestDist) {
+                    bestDist = d
+                    best = c
+                }
+            }
+            return best
+        }
     }
 
     // Single flat surface color shared by the key area, top bar and panels so the
@@ -158,9 +262,14 @@ class KeyboardView(
         previewShowing = false
     }
 
+    // Which key the preview is currently anchored to. With multi-touch typing the
+    // release of key A must not dismiss the preview key B just showed.
+    private var previewAnchor: View? = null
+
     fun showKeyPreview(anchor: View, char: String) {
         if (char.isBlank() || !isAttachedToWindow) return
         hideKeyPreview()
+        previewAnchor = anchor
 
         previewLabel.text = char
         previewLabel.setTextColor(onSurfaceColor)
@@ -189,11 +298,13 @@ class KeyboardView(
         } catch (_: Exception) { }
     }
 
-    fun hideKeyPreview() {
+    fun hideKeyPreview(anchor: View? = null) {
+        if (anchor != null && anchor !== previewAnchor) return
         if (previewShowing) {
             previewPopup.dismiss()
             previewShowing = false
         }
+        previewAnchor = null
     }
 
     // ── Top bar (toolbar ⇄ suggestions) ──────────────────────────────────────
@@ -466,38 +577,46 @@ class KeyboardView(
 
             addView(sectionLabel("OPTIONS"))
 
-            // Number row toggle
-            addView(LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = 4.dp
-                }
-                addView(rowLabel("Dedicated number row"))
-                addView(Switch(context).apply {
-                    isChecked = PrefsManager.isNumberRowEnabled(context)
-                    setOnCheckedChangeListener { _, checked ->
-                        PrefsManager.setNumberRowEnabled(context, checked)
-                        buildLetterContent()
-                        applyShiftToKeys()
+            fun switchRow(labelText: String, checked: Boolean, onChange: (Boolean) -> Unit) =
+                LinearLayout(context).apply {
+                    orientation = HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                        bottomMargin = 4.dp
                     }
-                })
+                    addView(rowLabel(labelText))
+                    addView(Switch(context).apply {
+                        isChecked = checked
+                        setOnCheckedChangeListener { _, c -> onChange(c) }
+                    })
+                }
+
+            addView(switchRow("Dedicated number row", PrefsManager.isNumberRowEnabled(context)) { checked ->
+                PrefsManager.setNumberRowEnabled(context, checked)
+                buildLetterContent()
+                applyShiftToKeys()
             })
 
-            // Dark mode toggle
-            addView(LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-                addView(rowLabel("Dark mode"))
-                addView(Switch(context).apply {
-                    isChecked = PrefsManager.isDarkMode(context)
-                    setOnCheckedChangeListener { _, checked ->
-                        PrefsManager.setDarkMode(context, checked)
-                        hideSettingsPanel()
-                        refreshTheme()
-                    }
-                })
+            addView(switchRow("Word suggestions", PrefsManager.isSuggestionsEnabled(context)) { checked ->
+                PrefsManager.setSuggestionsEnabled(context, checked)
+                if (!checked) {
+                    currentSuggestions.clear()
+                    showToolbar()
+                }
+            })
+
+            addView(switchRow("Key press vibration", PrefsManager.isKeyVibrationEnabled(context)) { checked ->
+                PrefsManager.setKeyVibrationEnabled(context, checked)
+            })
+
+            addView(switchRow("Key press sound", PrefsManager.isKeySoundEnabled(context)) { checked ->
+                PrefsManager.setKeySoundEnabled(context, checked)
+            })
+
+            addView(switchRow("Dark mode", PrefsManager.isDarkMode(context)) { checked ->
+                PrefsManager.setDarkMode(context, checked)
+                hideSettingsPanel()
+                refreshTheme()
             })
         }
 
@@ -511,6 +630,18 @@ class KeyboardView(
             visibility = GONE
             addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
+    }
+
+    // Soft slide-up + fade when a panel replaces the key area.
+    private fun animatePanelIn(v: View) {
+        v.alpha = 0f
+        v.translationY = 14f.dp
+        v.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(150)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
     }
 
     fun showSettingsPanel() {
@@ -534,6 +665,7 @@ class KeyboardView(
             }
         }
         settingsPanel?.visibility = VISIBLE
+        settingsPanel?.let { animatePanelIn(it) }
         allKeyContainer.visibility = GONE
         settingsShowing = true
         showToolbar()
@@ -634,6 +766,7 @@ class KeyboardView(
                 if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
             )
         )
+        clipboardPanel?.let { animatePanelIn(it) }
         allKeyContainer.visibility = GONE
         clipboardShowing = true
         showToolbar()
@@ -885,6 +1018,7 @@ class KeyboardView(
                 if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
             )
         )
+        emojiPanel?.let { animatePanelIn(it) }
         allKeyContainer.visibility = GONE
         emojiShowing = true
         showToolbar()
@@ -898,6 +1032,13 @@ class KeyboardView(
         if (!settingsShowing && !clipboardShowing) showSuggestions(currentSuggestions.toList())
     }
 
+    // Renders emoji through EmojiCompat's bundled font when available, so the panel
+    // shows current emoji designs even on devices whose system font predates them.
+    private fun emojiText(s: String): CharSequence = try {
+        val ec = androidx.emoji2.text.EmojiCompat.get()
+        if (ec.loadState == androidx.emoji2.text.EmojiCompat.LOAD_STATE_SUCCEEDED) ec.process(s) ?: s else s
+    } catch (_: Throwable) { s }
+
     private fun buildEmojiPanel(): LinearLayout {
         val bgColor = surfaceColor
         val tabActiveBg = if (isDark) 0xFF2C2E33.toInt() else 0xFFFFFFFF.toInt()
@@ -909,74 +1050,117 @@ class KeyboardView(
             add(EmojiCategory("😀", listOf(
                 "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃",
                 "😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙",
-                "🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫",
-                "🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬",
-                "🤥","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮",
-                "🤧","🥵","🥶","🥴","😵","🤯","🤠","🥸","😎","🤓",
-                "🧐","😕","😟","🙁","☹","😮","😯","😲","😳","🥺",
-                "😦","😧","😨","😰","😥","😢","😭","😱","😖","😣",
-                "😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈"
+                "🥲","🥹","😋","😛","😜","🤪","😝","🤑","🤗","🤭",
+                "🫢","🫣","🤫","🤔","🫡","🤐","🤨","😐","😑","😶",
+                "🫥","😶‍🌫️","😏","😒","🙄","😬","😮‍💨","🤥","🫨","😔",
+                "😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵",
+                "🥶","🥴","😵","😵‍💫","🤯","🤠","🥳","🥸","😎","🤓",
+                "🧐","😕","🫤","😟","🙁","☹","😮","😯","😲","😳",
+                "🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖",
+                "😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬",
+                "😈","👿","💀","☠","💩","🤡","👹","👺","👻","👽",
+                "👾","🤖","😺","😸","😹","😻","😼","😽","🙀","😿"
             )))
             add(EmojiCategory("👋", listOf(
-                "👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌","🤞",
-                "🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝","👍",
-                "👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝",
-                "🙏","✍","💅","🤳","💪","🦾","🦿","🦵","🦶","👂",
-                "🦻","👃","🧠","🦷","🦴","👀","👁","👅","👄","💋",
-                "👶","🧒","👦","👧","🧑","👱","👨","👩","🧓","👴"
+                "👋","🤚","🖐","✋","🖖","🫱","🫲","🫳","🫴","🫵",
+                "👌","🤌","🤏","✌","🤞","🫰","🤟","🤘","🤙","👈",
+                "👉","👆","🖕","👇","☝","👍","👎","✊","👊","🤛",
+                "🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","✍","💅",
+                "🤳","💪","🦾","🦿","🦵","🦶","👂","🦻","👃","🧠",
+                "🫀","🫁","🦷","🦴","👀","👁","👅","👄","🫦","💋",
+                "👶","🧒","👦","👧","🧑","👱","👨","👩","🧔","🧓",
+                "👴","👵","🥷","👮","💂","🕵","👷","🤴","👸","👳"
             )))
             add(EmojiCategory("🐶", listOf(
                 "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯",
                 "🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧",
                 "🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄",
-                "🐝","🪱","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷",
-                "🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞",
-                "🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅"
+                "🐝","🪱","🐛","🦋","🐌","🐞","🐜","🪰","🪲","🪳",
+                "🦟","🦗","🕷","🦂","🐢","🐍","🦎","🦖","🦕","🐙",
+                "🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋",
+                "🦈","🦭","🐊","🐅","🐆","🦓","🦍","🦧","🦣","🐘",
+                "🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄",
+                "🐎","🐖","🐏","🐑","🦙","🐐","🦌","🦫","🦤","🐕",
+                "🐈","🌵","🎄","🌲","🌳","🌴","🪴","🌱","🌿","☘",
+                "🍀","🍁","🍂","🍃","🌺","🌻","🌹","🥀","🌷","🌼",
+                "💐","🌾","🪶","🌙","⭐","🌟","✨","⚡","🔥","🌈"
             )))
             add(EmojiCategory("🍕", listOf(
                 "🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐",
                 "🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑",
-                "🥦","🥬","🥒","🌶","🫑","🧄","🧅","🥔","🍠","🥐",
-                "🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧈","🥞","🧇",
-                "🥓","🍖","🍗","🌭","🍔","🍟","🍕","🫓","🥪","🥙",
-                "🥗","🍝","🌮","🌯","🫔","🍱","🍘","🍙","🍚","🍛"
+                "🥦","🥬","🥒","🌶","🫑","🧄","🧅","🥔","🍠","🫘",
+                "🥐","🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧈","🥞",
+                "🧇","🥓","🍖","🍗","🌭","🍔","🍟","🍕","🫓","🥪",
+                "🥙","🥗","🍝","🌮","🌯","🫔","🍱","🍘","🍙","🍚",
+                "🍛","🍜","🍲","🍥","🥮","🍢","🍡","🥟","🥠","🥡",
+                "🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫",
+                "🍬","🍭","🍮","🍯","🍿","🌰","🥜","☕","🍵","🫖",
+                "🧋","🥛","🍼","🥤","🧃","🧉","🫗","🍾","🍷","🍸",
+                "🍹","🍺","🍻","🥂","🥃","🫕","🧊","🥄","🍴","🍽"
             )))
             add(EmojiCategory("⚽", listOf(
                 "⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱",
                 "🏓","🏸","🏒","🏑","🥍","🏏","🪁","🎯","⛳","🪃",
                 "🏹","🎣","🤿","🥊","🥋","🎽","🛹","🛼","🛷","⛸",
                 "🥌","🎿","⛷","🏂","🪂","🏋","🤼","🤸","⛹","🤺",
-                "🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆"
+                "🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆",
+                "🥇","🥈","🥉","🏅","🎖","🎗","🎫","🎟","🎪","🎭",
+                "🎨","🎬","🎤","🎧","🎼","🎹","🥁","🪘","🎷","🎺",
+                "🪗","🎸","🪕","🎻","🎲","♟","🎳","🎮","🎰","🧩",
+                "🪀","🛝","🎡","🎢","🎠","🎉","🎊","🎈","🎁","🪅"
             )))
             add(EmojiCategory("✈️", listOf(
                 "🚗","🚕","🚙","🚌","🚎","🏎","🚓","🚑","🚒","🚐",
-                "🚚","🚛","🚜","🛴","🚲","🛵","🏍","🚨","🚅","🚄",
-                "🚈","🚂","🚆","🚇","🚊","🚉","✈","🛫","🛬","💺",
-                "🛰","🚀","🛸","🚁","🛶","⛵","🚤","🛥","🛳","⛴",
-                "🚢","⚓","🧭","🗺","🗿","🏕","🏖","🏜","🏝","🏞"
+                "🛻","🚚","🚛","🚜","🛴","🚲","🛵","🏍","🛺","🚨",
+                "🚅","🚄","🚈","🚂","🚆","🚇","🚊","🚉","✈","🛫",
+                "🛬","💺","🛰","🚀","🛸","🚁","🛶","⛵","🚤","🛥",
+                "🛳","⛴","🚢","⚓","🛟","🧭","🗺","🗿","🗽","🗼",
+                "🏰","🏯","🏟","🎡","🏗","🏭","🏢","🏬","🏣","🏤",
+                "🏥","🏦","🏨","🏪","🏫","🏩","💒","🏛","⛪","🕌",
+                "🛕","🕍","⛩","🏠","🏡","🏘","🏚","⛺","🏕","🏖",
+                "🏜","🏝","🏞","🏔","⛰","🌋","🗻","🌍","🌎","🌏",
+                "🌅","🌄","🌇","🌆","🏙","🌃","🌌","🌉","🌁","🛣"
             )))
             add(EmojiCategory("💡", listOf(
                 "⌚","📱","📲","💻","⌨","🖥","🖨","🖱","🖲","🕹",
-                "💽","💾","💿","📀","📼","📷","📸","📹","🎥","⌛",
-                "⏱","⏲","⏰","🕰","⏳","📡","🔋","🪫","🔌","💡",
-                "🔦","🕯","🪔","🧯","🛢","💸","💵","💴","💶","💷",
-                "🪙","💰","💳","💎","⚖","🪜","🧰","🔧","🔨","📫"
+                "💽","💾","💿","📀","📼","📷","📸","📹","🎥","📽",
+                "🎞","📞","☎","📟","📠","📺","📻","🎙","🎚","🎛",
+                "⌛","⏱","⏲","⏰","🕰","⏳","📡","🔋","🪫","🔌",
+                "💡","🔦","🕯","🪔","🧯","🛢","💸","💵","💴","💶",
+                "💷","🪙","💰","💳","💎","⚖","🪜","🧰","🔧","🔨",
+                "⚒","🛠","⛏","🪛","🔩","⚙","🪤","🧱","⛓","🧲",
+                "🔫","💣","🧨","🪓","🔪","🗡","⚔","🛡","🚬","⚰",
+                "🪦","⚱","🏺","🔮","📿","🧿","💈","⚗","🔭","🔬",
+                "🕳","🩹","🩺","💊","💉","🩸","🧬","🦠","🧫","🧪",
+                "🌡","🧹","🪠","🧺","🧻","🚽","🚰","🚿","🛁","🛀",
+                "🧼","🫧","🪥","🪒","🧽","🪣","🧴","🛎","🔑","🗝",
+                "🚪","🪑","🛋","🛏","🛌","🧸","🪆","🖼","🪞","🪟",
+                "🛍","🛒","🎀","🪄","📦","📫","📮","📯","📜","📃",
+                "📄","📑","🧾","📊","📈","📉","🗞","📰","📖","📚",
+                "🔖","🧷","🔗","📎","🖇","📐","📏","🧮","📌","📍",
+                "✂","🖊","🖋","✒","🖌","🖍","📝","✏","🔍","🔎",
+                "🔏","🔐","🔒","🔓","📁","📂","🗂","📅","📆","🗒"
             )))
             add(EmojiCategory("❤️", listOf(
-                "❤","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔",
-                "❣","💕","💞","💓","💗","💖","💘","💝","💟","☮",
-                "✝","☪","🕉","☸","✡","🔯","🕎","☯","☦","🛐",
-                "⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐",
-                "♑","♒","♓","🆔","⚕","♻","🔱","🔰","⭕","✅",
-                "☑","✔","❎","🔲","🔳","⬜","⬛","◼","◻","▪"
+                "❤","🧡","💛","💚","💙","💜","🖤","🤍","🤎","🩷",
+                "🩵","🩶","💔","❤️‍🔥","❤️‍🩹","❣","💕","💞","💓","💗",
+                "💖","💘","💝","💟","💯","💢","💥","💫","💦","💨",
+                "💬","🗨","🗯","💭","💤","☮","✝","☪","🕉","☸",
+                "✡","🔯","🕎","☯","☦","🛐","⛎","♈","♉","♊",
+                "♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔",
+                "⚕","♻","🔱","🔰","⭕","✅","☑","✔","❎","➕",
+                "➖","➗","✖","♾","💲","💱","©","®","™","⚠",
+                "🚸","⛔","🚫","🚭","❗","❕","❓","❔","‼","⁉",
+                "🔅","🔆","🔇","🔈","🔉","🔊","📢","📣","🔔","🔕",
+                "🎵","🎶","🎼","♠","♥","♦","♣","🃏","🀄","🎴",
+                "🔲","🔳","⬜","⬛","◼","◻","▪","▫","🔶","🔷"
             )))
             add(EmojiCategory("🏁", listOf(
-                "🏁","🚩","🎌","🏴","🏳",
-                "🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇩🇪",
-                "🇫🇷","🇪🇸","🇮🇹","🇯🇵","🇰🇷",
-                "🇨🇳","🇷🇺","🇧🇷","🇮🇳","🇲🇽",
-                "🇸🇦","🇦🇪","🇹🇷","🇵🇰","🇺🇿",
-                "🇰🇿","🇹🇲","🇦🇲","🇬🇪","🇦🇷"
+                "🏁","🚩","🎌","🏴","🏳","🏳️‍🌈","🏴‍☠️",
+                "🇺🇿","🇰🇿","🇰🇬","🇹🇯","🇹🇲","🇦🇿","🇹🇷","🇷🇺","🇺🇦",
+                "🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇩🇪","🇫🇷","🇪🇸","🇮🇹","🇳🇱","🇵🇱",
+                "🇸🇪","🇨🇭","🇯🇵","🇰🇷","🇨🇳","🇮🇳","🇮🇩","🇵🇰","🇸🇦","🇦🇪",
+                "🇪🇬","🇧🇷","🇲🇽","🇦🇷","🇦🇲","🇬🇪","🇧🇾","🇲🇳","🇦🇫","🇮🇷"
             )))
         }
 
@@ -1028,7 +1212,7 @@ class KeyboardView(
                     contentGrid.addView(rowL)
                 }
                 rowL?.addView(TextView(context).apply {
-                    text = emoji
+                    text = emojiText(emoji)
                     textSize = 22f
                     gravity = Gravity.CENTER
                     layoutParams = LayoutParams(0, 40.dp, 1f)
@@ -1037,15 +1221,24 @@ class KeyboardView(
                         listener.onKeyText(emoji)
                         recentEmojis.remove(emoji)
                         recentEmojis.add(0, emoji)
-                        if (recentEmojis.size > 24) recentEmojis.removeAt(recentEmojis.size - 1)
+                        if (recentEmojis.size > 32) recentEmojis.removeAt(recentEmojis.size - 1)
+                        PrefsManager.setRecentEmojis(context, recentEmojis.joinToString(" "))
                     }
                 })
+            }
+            // Pad the trailing partial row with empty cells so its emoji stay on the
+            // same left-aligned grid as full rows instead of stretching to center.
+            val remainder = emojis.size % perRow
+            if (remainder != 0) {
+                repeat(perRow - remainder) {
+                    rowL?.addView(View(context), LayoutParams(0, 40.dp, 1f))
+                }
             }
         }
 
         categories.forEachIndexed { idx, cat ->
             val tab = TextView(context).apply {
-                text = cat.icon
+                text = emojiText(cat.icon)
                 textSize = 18f
                 gravity = Gravity.CENTER
                 val pad = 6.dp
@@ -1086,10 +1279,23 @@ class KeyboardView(
 
     // ── Key rendering ──────────────────────────────────────────────────────
 
+    // The space key names the active layout: Latin shows the Latin autonym, the
+    // Cyrillic layout its Cyrillic one. Shared layouts (numbers/symbols/numpad)
+    // follow whichever language is current.
+    private fun applySpaceLabels() {
+        letterKeyRows.forEach { row -> row.forEach { it.setSpaceLabelText("Qaraqalpaqsha") } }
+        russianKeyRows.forEach { row -> row.forEach { it.setSpaceLabelText("Қарақалпақша") } }
+        val current = if (language == Language.RUSSIAN) "Қарақалпақша" else "Qaraqalpaqsha"
+        (numberKeyRows + symbolKeyRows + numpadKeyRows).forEach { row ->
+            row.forEach { it.setSpaceLabelText(current) }
+        }
+    }
+
     private fun buildLetterContent() {
         lettersContainer.removeAllViews()
         letterKeyRows.clear()
         buildRowsInto(lettersContainer, KarakalpakLayout.getLetterRows(context), letterKeyRows, equalizeWidth = true)
+        applySpaceLabels()
     }
 
     private fun buildRussianContent() {
@@ -1097,6 +1303,7 @@ class KeyboardView(
         russianKeyRows.clear()
         buildRowsInto(russianContainer, KarakalpakLayout.getRussianRows(context), russianKeyRows, equalizeWidth = true)
         russianBuilt = true
+        applySpaceLabels()
     }
 
     fun switchLanguage() {
@@ -1107,6 +1314,7 @@ class KeyboardView(
             russianContainer.visibility = if (language == Language.RUSSIAN) VISIBLE else GONE
             applyShiftToKeys()
         }
+        applySpaceLabels()
     }
 
     private fun buildNumberContent() {
@@ -1114,6 +1322,7 @@ class KeyboardView(
         numberKeyRows.clear()
         buildRowsInto(numbersContainer, KarakalpakLayout.NUMBER_ROWS, numberKeyRows)
         numbersBuilt = true
+        applySpaceLabels()
     }
 
     private fun buildSymbolContent() {
@@ -1121,6 +1330,7 @@ class KeyboardView(
         symbolKeyRows.clear()
         buildRowsInto(symbolsContainer, KarakalpakLayout.SYMBOL_ROWS, symbolKeyRows)
         symbolsBuilt = true
+        applySpaceLabels()
     }
 
     private fun buildNumpadContent() {
@@ -1128,6 +1338,7 @@ class KeyboardView(
         numpadKeyRows.clear()
         buildRowsInto(numpadContainer, KarakalpakLayout.numpadRows(numpadPhone), numpadKeyRows)
         numpadBuilt = true
+        applySpaceLabels()
     }
 
     // Shows the digit-only keypad, used for fields whose inputType is

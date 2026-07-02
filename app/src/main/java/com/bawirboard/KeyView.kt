@@ -4,11 +4,11 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -32,6 +32,9 @@ class KeyView(
     private var isShifted = false
     private val longPressDelay = 350L
     private val repeatDelay = 50L
+
+    // Label shown on the space key; set per layout (Latin/Cyrillic) by KeyboardView.
+    private var spaceLabel: String = "Qaraqalpaqsha"
 
     // Slide-to-select state for the long-press picker
     private var pickerChars: List<String> = emptyList()
@@ -85,6 +88,7 @@ class KeyView(
                 Typeface.create("sans-serif-medium", Typeface.NORMAL)
             else
                 Typeface.create("sans-serif", Typeface.NORMAL)
+            if (keyDef.type == KeyType.SPACE) isSingleLine = true
         }
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.CENTER
@@ -101,7 +105,6 @@ class KeyView(
         }
 
         applyStyle()
-        setupTouchListener()
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density + 0.5f).toInt()
@@ -124,7 +127,7 @@ class KeyView(
     }
 
     private fun makeKeyDrawable(normal: Int, pressed: Int): StateListDrawable {
-        val r = 8f.dp
+        val r = 10f.dp
         fun shape(c: Int) = GradientDrawable().apply { setColor(c); cornerRadius = r }
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), shape(pressed))
@@ -156,7 +159,7 @@ class KeyView(
         } else {
             label.setTextColor(if (keyDef.type == KeyType.SPACE) colorHintText() else textColor)
             label.text = when (keyDef.type) {
-                KeyType.SPACE -> "Bawir"
+                KeyType.SPACE -> spaceLabel
                 KeyType.PUNCT -> currentPunct()
                 else -> keyDef.label
             }
@@ -181,6 +184,11 @@ class KeyView(
         } else {
             hintLabel.visibility = INVISIBLE
         }
+    }
+
+    fun setSpaceLabelText(text: String) {
+        spaceLabel = text
+        if (keyDef.type == KeyType.SPACE) label.text = text
     }
 
     private fun applyIconDrawable(tint: Int) {
@@ -229,58 +237,78 @@ class KeyView(
         }
     }
 
-    private fun setupTouchListener() {
-        setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    isLongPressing = false
-                    handler.postDelayed(longPressRunnable, longPressDelay)
-                    v.isPressed = true
-                    if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) {
-                        val char = when (keyDef.type) {
-                            KeyType.PUNCT -> currentPunct()
-                            else -> if (isShifted) keyDef.shiftLabel else keyDef.label
-                        }
-                        listener.onShowKeyPreview(this, char)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (popup != null && pickerCells.isNotEmpty()) {
-                        updatePickerSelection(event.rawX)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    handler.removeCallbacks(longPressRunnable)
-                    handler.removeCallbacks(repeatRunnable)
-                    if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview()
+    // ── Press lifecycle ────────────────────────────────────────────────────
+    // Touch events are dispatched per pointer by KeyboardView's key panel, so two
+    // overlapping presses (fast typing) each reach their own key. These methods are
+    // the single-pointer press lifecycle for this key.
 
-                    if (isLongPressing) {
-                        // Long-press completed: type the char the finger settled on
-                        if (popup != null && pickerChars.isNotEmpty() && keyDef.type != KeyType.DELETE) {
-                            listener.onKeyText(pickerChars[pickerSelected.coerceIn(pickerChars.indices)])
-                        }
-                    } else {
-                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onTap()
-                    }
-                    isLongPressing = false
-                    dismissPopup()
-                    v.isPressed = false
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    handler.removeCallbacks(longPressRunnable)
-                    handler.removeCallbacks(repeatRunnable)
-                    if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview()
-                    isLongPressing = false
-                    dismissPopup()
-                    v.isPressed = false
-                    true
-                }
-                else -> false
+    fun handleDown() {
+        isLongPressing = false
+        handler.postDelayed(longPressRunnable, longPressDelay)
+        isPressed = true
+        tapFeedback()
+        if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) {
+            val char = when (keyDef.type) {
+                KeyType.PUNCT -> currentPunct()
+                else -> if (isShifted) keyDef.shiftLabel else keyDef.label
             }
+            listener.onShowKeyPreview(this, char)
+        }
+    }
+
+    fun handleMove(rawX: Float) {
+        if (popup != null && pickerCells.isNotEmpty()) {
+            updatePickerSelection(rawX)
+        }
+    }
+
+    fun handleUp() {
+        handler.removeCallbacks(longPressRunnable)
+        handler.removeCallbacks(repeatRunnable)
+        if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview(this)
+
+        if (isLongPressing) {
+            // Long-press completed: type the char the finger settled on
+            if (popup != null && pickerChars.isNotEmpty() && keyDef.type != KeyType.DELETE) {
+                listener.onKeyText(pickerChars[pickerSelected.coerceIn(pickerChars.indices)])
+            }
+        } else {
+            onTap()
+        }
+        isLongPressing = false
+        dismissPopup()
+        isPressed = false
+    }
+
+    fun handleCancel() {
+        handler.removeCallbacks(longPressRunnable)
+        handler.removeCallbacks(repeatRunnable)
+        if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview(this)
+        isLongPressing = false
+        dismissPopup()
+        isPressed = false
+    }
+
+    // Press feedback fires on key-down (not on release) so typing feels immediate.
+    private fun tapFeedback() {
+        if (PrefsManager.isKeyVibrationEnabled(context)) {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+        if (PrefsManager.isKeySoundEnabled(context)) {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            val fx = when (keyDef.type) {
+                KeyType.DELETE -> AudioManager.FX_KEYPRESS_DELETE
+                KeyType.ENTER -> AudioManager.FX_KEYPRESS_RETURN
+                KeyType.SPACE -> AudioManager.FX_KEYPRESS_SPACEBAR
+                else -> AudioManager.FX_KEYPRESS_STANDARD
+            }
+            am?.playSoundEffect(fx, -1f)
+        }
+    }
+
+    private fun longPressFeedback() {
+        if (PrefsManager.isKeyVibrationEnabled(context)) {
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         }
     }
 
@@ -304,13 +332,13 @@ class KeyView(
             keyDef.popupCharsShifted else keyDef.popupChars
         when {
             keyDef.type == KeyType.DELETE -> {
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                longPressFeedback()
                 listener.onKeyDelete()
                 handler.postDelayed(repeatRunnable, repeatDelay)
             }
             activePopups.isNotEmpty() -> {
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview()
+                longPressFeedback()
+                if (keyDef.type == KeyType.LETTER) listener.onHideKeyPreview(this)
                 showPopupPicker(activePopups)
             }
             keyDef.type == KeyType.SPACE -> {
@@ -321,21 +349,21 @@ class KeyView(
                 // Tap types a newline in text fields; the field's send/go/next
                 // action lives on long-press. isLongPressing stays true so the
                 // release doesn't also insert a newline.
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                longPressFeedback()
                 listener.onKeyEnterLongPress()
             }
             keyDef.type == KeyType.LANG_SWITCH -> {
                 // Long-press the globe: transliterate the whole field between scripts.
                 // isLongPressing stays true so release does not also switch the layout.
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                longPressFeedback()
                 listener.onTransliterate()
             }
             keyDef.type == KeyType.PUNCT -> {
                 // Toggle the variable punctuation key to the other symbol, type it, and
                 // remember it as the new tap value. isLongPressing stays true so release
                 // doesn't also type the previous value.
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                listener.onHideKeyPreview()
+                longPressFeedback()
+                listener.onHideKeyPreview(this)
                 val next = otherPunct()
                 variablePunct = next
                 listener.onKeyText(next)
@@ -347,7 +375,7 @@ class KeyView(
 
     // Shows a row of candidate characters above the key. While the finger is held
     // down, sliding left/right moves the highlight; releasing types the highlighted
-    // character (handled in the touch listener via pickerSelected).
+    // character (handled in handleUp via pickerSelected).
     private fun showPopupPicker(chars: List<String>) {
         val bgColor = if (isDark) 0xFF3A3D44.toInt() else 0xFFFFFFFF.toInt()
         val txtColor = colorKeyText()
@@ -397,7 +425,7 @@ class KeyView(
         val xOff = width / 2 - popupW / 2
         val yOff = -(height + popupH + 8.dp)
 
-        // Remember where the cells sit on screen so ACTION_MOVE can map rawX → cell.
+        // Remember where the cells sit on screen so pointer moves can map rawX → cell.
         val loc = IntArray(2)
         getLocationOnScreen(loc)
         pickerStartX = (loc[0] + xOff + 4.dp).toFloat()
@@ -414,7 +442,9 @@ class KeyView(
             .coerceIn(0, pickerCells.size - 1)
         if (idx != pickerSelected) {
             pickerSelected = idx
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            if (PrefsManager.isKeyVibrationEnabled(context)) {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            }
             highlightPickerCell()
         }
     }

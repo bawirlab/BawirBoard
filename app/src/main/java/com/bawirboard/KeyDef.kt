@@ -128,9 +128,13 @@ object KarakalpakLayout {
         KeyDef("↵", type = KeyType.ENTER, widthWeight = 2f)
     )
 
+    // Number row sized for the Cyrillic grid: its rows total ~12 weight, so 10 digit
+    // keys at 1.2f fill the row edge-to-edge instead of floating centered with gaps.
+    val CYR_NUMBER_ROW = NUMBER_ROW.map { it.copy(widthWeight = 1.2f) }
+
     fun getRussianRows(context: Context): List<List<KeyDef>> {
         val base = listOf(RUSSIAN_ROW1, RUSSIAN_ROW2, RUSSIAN_ROW3, RUSSIAN_ROW4)
-        return if (PrefsManager.isNumberRowEnabled(context)) listOf(NUMBER_ROW) + base else base
+        return if (PrefsManager.isNumberRowEnabled(context)) listOf(CYR_NUMBER_ROW) + base else base
     }
 
     val NUMBERS_ROW1 = listOf(

@@ -12,6 +12,9 @@ object SuggestionEngine {
     private var isLoading = false
 
     private var sortedWords = emptyArray<String>()
+    // Lowercased copy of sortedWords, precomputed once so per-keystroke completion
+    // lookups don't allocate a lowercase string per binary-search comparison.
+    private var sortedLower = emptyArray<String>()
     private val nextWords = HashMap<String, Array<String>>(90000)
     // Globally most common follow-up words, used as a fallback prediction so the
     // suggestion bar keeps offering next words even when a word has no recorded ones.
@@ -38,6 +41,7 @@ object SuggestionEngine {
                     }
                 }
                 sortedWords = words.toTypedArray()
+                sortedLower = Array(sortedWords.size) { sortedWords[it].lowercase() }
                 defaultNext = freq.entries.sortedByDescending { it.value }
                     .take(3).map { it.key }.toTypedArray()
                 isLoaded = sortedWords.isNotEmpty()
@@ -58,16 +62,16 @@ object SuggestionEngine {
         val lc = prefix.lowercase()
         // Binary search for first entry whose lowercase >= lc (data is sorted case-insensitively)
         var lo = 0
-        var hi = sortedWords.size
+        var hi = sortedLower.size
         while (lo < hi) {
             val mid = (lo + hi) ushr 1
-            if (sortedWords[mid].lowercase() < lc) lo = mid + 1 else hi = mid
+            if (sortedLower[mid] < lc) lo = mid + 1 else hi = mid
         }
         val result = mutableListOf<String>()
         var i = lo
-        while (i < sortedWords.size && result.size < 3) {
-            val w = sortedWords[i++]
-            if (w.lowercase().startsWith(lc)) result.add(w) else break
+        while (i < sortedLower.size && result.size < 3) {
+            if (sortedLower[i].startsWith(lc)) result.add(sortedWords[i]) else break
+            i++
         }
         return result
     }
