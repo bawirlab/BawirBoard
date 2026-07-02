@@ -29,6 +29,9 @@ object PrefsManager {
     fun getClipboardHistory(ctx: Context) = prefs(ctx).getString("clipboard_history", "") ?: ""
     fun setClipboardHistory(ctx: Context, v: String) = prefs(ctx).edit().putString("clipboard_history", v).apply()
 
+    fun getClipboardPinned(ctx: Context) = prefs(ctx).getString("clipboard_pinned", "") ?: ""
+    fun setClipboardPinned(ctx: Context, v: String) = prefs(ctx).edit().putString("clipboard_pinned", v).apply()
+
     fun isSuggestionsEnabled(ctx: Context) = prefs(ctx).getBoolean("suggestions", true)
     fun setSuggestionsEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("suggestions", v).apply()
 

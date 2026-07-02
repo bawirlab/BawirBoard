@@ -10,13 +10,19 @@ object ClipboardHistory {
     private const val SEP = "" // ASCII record separator — unlikely in copied text
 
     private val items = mutableListOf<String>()
+    // Pinned copies, kept separately so they stay at the top of the panel and are
+    // never pushed out by new copies trimming the history.
+    private val pinnedItems = mutableListOf<String>()
     private var loaded = false
 
     private fun ensureLoaded(ctx: Context) {
         if (loaded) return
         items.clear()
+        pinnedItems.clear()
         val raw = PrefsManager.getClipboardHistory(ctx)
         if (raw.isNotEmpty()) raw.split(SEP).forEach { if (it.isNotBlank()) items.add(it) }
+        val rawPinned = PrefsManager.getClipboardPinned(ctx)
+        if (rawPinned.isNotEmpty()) rawPinned.split(SEP).forEach { if (it.isNotBlank()) pinnedItems.add(it) }
         loaded = true
     }
 
@@ -36,17 +42,45 @@ object ClipboardHistory {
 
     fun remove(ctx: Context, texts: Collection<String>) {
         ensureLoaded(ctx)
-        items.removeAll(texts.toSet())
+        val set = texts.toSet()
+        items.removeAll(set)
+        pinnedItems.removeAll(set)
         persist(ctx)
     }
 
     fun clear(ctx: Context) {
         ensureLoaded(ctx)
         items.clear()
+        pinnedItems.clear()
+        persist(ctx)
+    }
+
+    fun pinned(ctx: Context): List<String> {
+        ensureLoaded(ctx)
+        return pinnedItems.toList()
+    }
+
+    fun isPinned(ctx: Context, text: String): Boolean {
+        ensureLoaded(ctx)
+        return text in pinnedItems
+    }
+
+    fun pin(ctx: Context, texts: Collection<String>) {
+        ensureLoaded(ctx)
+        texts.forEach { t ->
+            if (t !in pinnedItems) pinnedItems.add(0, t)
+        }
+        persist(ctx)
+    }
+
+    fun unpin(ctx: Context, texts: Collection<String>) {
+        ensureLoaded(ctx)
+        pinnedItems.removeAll(texts.toSet())
         persist(ctx)
     }
 
     private fun persist(ctx: Context) {
         PrefsManager.setClipboardHistory(ctx, items.joinToString(SEP))
+        PrefsManager.setClipboardPinned(ctx, pinnedItems.joinToString(SEP))
     }
 }

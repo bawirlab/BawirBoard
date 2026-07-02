@@ -405,6 +405,12 @@ class KeyboardView(
         }
         // While a panel is open the top bar stays on the toolbar; don't flip it.
         if (settingsShowing || emojiShowing || clipboardShowing) return
+        // Never flip to the suggestion strip when there is nothing to suggest or the
+        // feature is off — returning from a panel used to flash an empty strip here.
+        if (words.isEmpty() || !PrefsManager.isSuggestionsEnabled(context)) {
+            showToolbar()
+            return
+        }
         showSuggestionBar()
     }
 
@@ -812,7 +818,11 @@ class KeyboardView(
         val textColor = onSurfaceColor
         val cardBg = if (isDark) 0xFF2C2E33.toInt() else 0xFFFFFFFF.toInt()
 
-        val clipItems = ClipboardHistory.all(context).toMutableList()
+        // Pinned copies first (with a pin badge), then the regular history without
+        // the pinned duplicates, so pins never sink as new copies arrive.
+        val pinnedItems = ClipboardHistory.pinned(context)
+        val pinnedSet = pinnedItems.toSet()
+        val clipItems = (pinnedItems + ClipboardHistory.all(context).filter { it !in pinnedSet }).toMutableList()
 
         val selectedIndices = mutableSetOf<Int>()
         val cardViews = mutableListOf<View>()
@@ -906,6 +916,10 @@ class KeyboardView(
                 }
             }
             actionBar.visibility = if (selectedIndices.isEmpty()) GONE else VISIBLE
+            // The pin button toggles: unpin when everything selected is already pinned.
+            val allPinned = selectedIndices.isNotEmpty() &&
+                selectedIndices.all { clipItems.getOrNull(it) in pinnedSet }
+            pinBtn.text = if (allPinned) "Unpin Selected" else "Pin Selected"
         }
 
         if (clipItems.isEmpty()) {
@@ -929,8 +943,7 @@ class KeyboardView(
                     }
                     gridContainer.addView(rowLayout)
                 }
-                val card = LinearLayout(context).apply {
-                    orientation = VERTICAL
+                val card = FrameLayout(context).apply {
                     background = GradientDrawable().apply { setColor(cardBg); cornerRadius = 8f.dp }
                     layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
                         if (idx % 2 == 0) marginEnd = 4.dp else marginStart = 4.dp
@@ -953,7 +966,18 @@ class KeyboardView(
                     setTextColor(textColor)
                     maxLines = 3
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                })
+                }, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply { if (item in pinnedSet) marginEnd = 14.dp })
+                if (item in pinnedSet) {
+                    card.addView(TextView(context).apply {
+                        text = "📌"
+                        textSize = 9f
+                    }, FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP or Gravity.END
+                    ))
+                }
                 cardViews.add(card)
                 rowLayout?.addView(card)
             }
@@ -989,10 +1013,17 @@ class KeyboardView(
                 refreshClipboardPanel()
             }
         }
+        // Pin keeps the selected copies at the top of this panel (it does not insert
+        // anything). If everything selected is already pinned, the tap unpins them.
         pinBtn.setOnClickListener {
-            val pinned = selectedIndices.sorted().mapNotNull { clipItems.getOrNull(it) }.joinToString("\n")
-            if (pinned.isNotEmpty()) listener.onKeyText(pinned)
-            hideClipboardPanel()
+            val selected = selectedIndices.sorted().mapNotNull { clipItems.getOrNull(it) }
+            if (selected.isEmpty()) return@setOnClickListener
+            if (selected.all { it in pinnedSet }) {
+                ClipboardHistory.unpin(context, selected)
+            } else {
+                ClipboardHistory.pin(context, selected.filter { it !in pinnedSet })
+            }
+            refreshClipboardPanel()
         }
 
         return panel
