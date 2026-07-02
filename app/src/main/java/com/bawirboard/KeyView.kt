@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
 
@@ -31,6 +32,13 @@ class KeyView(
     private var isShifted = false
     private val longPressDelay = 350L
     private val repeatDelay = 50L
+
+    // Slide-to-select state for the long-press picker
+    private var pickerChars: List<String> = emptyList()
+    private var pickerCells: List<TextView> = emptyList()
+    private var pickerSelected = 0
+    private var pickerStartX = 0f
+    private var pickerCellW = 0
 
     private val longPressRunnable = Runnable { onLongPress() }
     private val repeatRunnable = object : Runnable {
@@ -58,10 +66,9 @@ class KeyView(
 
     init {
         isClickable = true
-        elevation = 2f * resources.displayMetrics.density
 
         hintLabel = TextView(context).apply {
-            textSize = 8f
+            textSize = 9f
             gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             visibility = INVISIBLE
@@ -69,13 +76,13 @@ class KeyView(
         addView(hintLabel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.TOP or Gravity.END
             topMargin = 3.dp
-            marginEnd = 4.dp
+            marginEnd = 5.dp
         })
 
         label = TextView(context).apply {
             gravity = Gravity.CENTER
             typeface = if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT)
-                Typeface.DEFAULT_BOLD
+                Typeface.create("sans-serif-medium", Typeface.NORMAL)
             else
                 Typeface.create("sans-serif", Typeface.NORMAL)
         }
@@ -100,13 +107,13 @@ class KeyView(
     private val Int.dp: Int get() = (this * resources.displayMetrics.density + 0.5f).toInt()
     private val Float.dp: Float get() = this * resources.displayMetrics.density
 
-    private fun colorKeyBg() = if (isDark) 0xFF3A3A3A.toInt() else 0xFFFFFFFF.toInt()
-    private fun colorKeyBgPressed() = if (isDark) 0xFF555555.toInt() else 0xFFCBCBCB.toInt()
-    private fun colorSpecialBg() = if (isDark) 0xFF252525.toInt() else 0xFFBEC4CA.toInt()
-    private fun colorSpecialBgPressed() = if (isDark) 0xFF383838.toInt() else 0xFF9EA4AC.toInt()
-    private fun colorKeyText() = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
-    private fun colorSpecialText() = if (isDark) 0xFFCCCCCC.toInt() else 0xFF333333.toInt()
-    private fun colorHintText() = if (isDark) 0xFF9E9E9E.toInt() else 0xFF888888.toInt()
+    private fun colorKeyBg() = if (isDark) 0xFF2C2E33.toInt() else 0xFFFFFFFF.toInt()
+    private fun colorKeyBgPressed() = if (isDark) 0xFF43464D.toInt() else 0xFFD9DCE1.toInt()
+    private fun colorSpecialBg() = if (isDark) 0xFF202226.toInt() else 0xFFD3D7DD.toInt()
+    private fun colorSpecialBgPressed() = if (isDark) 0xFF34373D.toInt() else 0xFFBEC3CB.toInt()
+    private fun colorKeyText() = if (isDark) 0xFFECEDEF.toInt() else 0xFF202226.toInt()
+    private fun colorSpecialText() = if (isDark) 0xFFB9BCC3.toInt() else 0xFF41454C.toInt()
+    private fun colorHintText() = if (isDark) 0xFF787D85.toInt() else 0xFF8E939B.toInt()
     private fun darkenAccent() = darkenColor(accentColor)
 
     private fun darkenColor(color: Int): Int {
@@ -117,7 +124,7 @@ class KeyView(
     }
 
     private fun makeKeyDrawable(normal: Int, pressed: Int): StateListDrawable {
-        val r = 6f.dp
+        val r = 8f.dp
         fun shape(c: Int) = GradientDrawable().apply { setColor(c); cornerRadius = r }
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), shape(pressed))
@@ -147,17 +154,17 @@ class KeyView(
         if (iconView != null) {
             applyIconDrawable(textColor)
         } else {
-            label.setTextColor(textColor)
+            label.setTextColor(if (keyDef.type == KeyType.SPACE) colorHintText() else textColor)
             label.text = when (keyDef.type) {
-                KeyType.SPACE -> "Space"
+                KeyType.SPACE -> "Bawir"
                 KeyType.PUNCT -> currentPunct()
                 else -> keyDef.label
             }
 
             val baseSize = when (keyDef.type) {
-                KeyType.LETTER, KeyType.PUNCT -> 17f
-                KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE -> 14f
-                KeyType.SPACE -> 13f
+                KeyType.LETTER, KeyType.PUNCT -> 18f
+                KeyType.NUM_TOGGLE, KeyType.SYM_TOGGLE -> 13f
+                KeyType.SPACE -> 12f
                 else -> 15f
             }
             label.textSize = baseSize * fontScale
@@ -238,17 +245,21 @@ class KeyView(
                     }
                     true
                 }
+                MotionEvent.ACTION_MOVE -> {
+                    if (popup != null && pickerCells.isNotEmpty()) {
+                        updatePickerSelection(event.rawX)
+                    }
+                    true
+                }
                 MotionEvent.ACTION_UP -> {
                     handler.removeCallbacks(longPressRunnable)
                     handler.removeCallbacks(repeatRunnable)
                     if (keyDef.type == KeyType.LETTER || keyDef.type == KeyType.PUNCT) listener.onHideKeyPreview()
 
                     if (isLongPressing) {
-                        // Long-press completed: type first popup char on release
-                        val activePopups = if (isShifted && keyDef.popupCharsShifted.isNotEmpty())
-                            keyDef.popupCharsShifted else keyDef.popupChars
-                        if (activePopups.isNotEmpty() && keyDef.type != KeyType.DELETE) {
-                            listener.onKeyText(activePopups.first())
+                        // Long-press completed: type the char the finger settled on
+                        if (popup != null && pickerChars.isNotEmpty() && keyDef.type != KeyType.DELETE) {
+                            listener.onKeyText(pickerChars[pickerSelected.coerceIn(pickerChars.indices)])
                         }
                     } else {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -327,47 +338,101 @@ class KeyView(
         }
     }
 
+    // Shows a row of candidate characters above the key. While the finger is held
+    // down, sliding left/right moves the highlight; releasing types the highlighted
+    // character (handled in the touch listener via pickerSelected).
     private fun showPopupPicker(chars: List<String>) {
-        val bgColor = if (isDark) 0xFF424242.toInt() else 0xFFF5F5F5.toInt()
-        val txtColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
+        val bgColor = if (isDark) 0xFF3A3D44.toInt() else 0xFFFFFFFF.toInt()
+        val txtColor = colorKeyText()
 
-        val tv = TextView(context).apply {
-            text = chars.joinToString("  ")
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(txtColor)
-            val d = GradientDrawable().apply {
+        val cellW = 46.dp
+        val cellH = 46.dp
+
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = GradientDrawable().apply {
                 setColor(bgColor)
-                cornerRadius = 10f.dp
+                cornerRadius = 12f.dp
+                if (!isDark) setStroke(1, 0x14000000)
             }
-            background = d
-            gravity = Gravity.CENTER
-            setPadding(24.dp, 14.dp, 24.dp, 14.dp)
+            setPadding(4.dp, 4.dp, 4.dp, 4.dp)
+            elevation = 8f.dp
         }
 
-        tv.measure(
+        pickerChars = chars
+        pickerSelected = 0
+        pickerCells = chars.map { ch ->
+            TextView(context).apply {
+                text = ch
+                textSize = 20f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(txtColor)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(cellW, cellH)
+                row.addView(this)
+            }
+        }
+        highlightPickerCell()
+
+        row.measure(
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
-        val popupW = tv.measuredWidth
-        val popupH = tv.measuredHeight
+        val popupW = row.measuredWidth
+        val popupH = row.measuredHeight
 
-        popup = PopupWindow(tv, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+        popup = PopupWindow(row, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             isOutsideTouchable = true
             isFocusable = false
+            elevation = 8f.dp
         }
 
         val xOff = width / 2 - popupW / 2
         val yOff = -(height + popupH + 8.dp)
+
+        // Remember where the cells sit on screen so ACTION_MOVE can map rawX → cell.
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+        pickerStartX = (loc[0] + xOff + 4.dp).toFloat()
+        pickerCellW = cellW
 
         try {
             popup?.showAsDropDown(this, xOff, yOff)
         } catch (_: Exception) { }
     }
 
+    private fun updatePickerSelection(rawX: Float) {
+        if (pickerCells.isEmpty() || pickerCellW <= 0) return
+        val idx = ((rawX - pickerStartX) / pickerCellW).toInt()
+            .coerceIn(0, pickerCells.size - 1)
+        if (idx != pickerSelected) {
+            pickerSelected = idx
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            highlightPickerCell()
+        }
+    }
+
+    private fun highlightPickerCell() {
+        pickerCells.forEachIndexed { i, cell ->
+            if (i == pickerSelected) {
+                cell.background = GradientDrawable().apply {
+                    setColor(accentColor)
+                    cornerRadius = 9f.dp
+                }
+                cell.setTextColor(0xFFFFFFFF.toInt())
+            } else {
+                cell.background = null
+                cell.setTextColor(colorKeyText())
+            }
+        }
+    }
+
     private fun dismissPopup() {
         popup?.dismiss()
         popup = null
+        pickerCells = emptyList()
+        pickerChars = emptyList()
+        pickerSelected = 0
     }
 
     override fun onDetachedFromWindow() {

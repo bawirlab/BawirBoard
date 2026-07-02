@@ -113,24 +113,32 @@ class KeyboardView(
         setupPreview()
     }
 
+    // Single flat surface color shared by the key area, top bar and panels so the
+    // keyboard reads as one clean sheet instead of stacked contrasting strips.
+    private val surfaceColor get() = if (isDark) 0xFF141518.toInt() else 0xFFE8EAEE.toInt()
+    private val onSurfaceColor get() = if (isDark) 0xFFECEDEF.toInt() else 0xFF202226.toInt()
+    private val onSurfaceMuted get() = if (isDark) 0xFF9AA0A8.toInt() else 0xFF5F646B.toInt()
+    private val hairlineColor get() = if (isDark) 0xFF2A2C31.toInt() else 0xFFCDD1D8.toInt()
+
     private fun applyBg() {
-        setBackgroundColor(if (isDark) 0xFF000000.toInt() else 0xFFD1D5DB.toInt())
+        setBackgroundColor(surfaceColor)
     }
 
     // ── Key preview ────────────────────────────────────────────────────────
 
     private fun setupPreview() {
         previewLabel = TextView(context).apply {
-            textSize = 26f
-            typeface = Typeface.DEFAULT_BOLD
+            textSize = 24f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.CENTER
-            setTextColor(if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt())
+            setTextColor(onSurfaceColor)
             val bg = GradientDrawable().apply {
-                setColor(if (isDark) 0xFF4A4A4A.toInt() else 0xFFFFFFFF.toInt())
-                cornerRadius = 10f.dp
+                setColor(if (isDark) 0xFF3A3D44.toInt() else 0xFFFFFFFF.toInt())
+                cornerRadius = 12f.dp
+                if (!isDark) setStroke(1, 0x14000000)
             }
             background = bg
-            setPadding(18.dp, 8.dp, 18.dp, 8.dp)
+            setPadding(18.dp, 10.dp, 18.dp, 10.dp)
         }
         previewPopup = PopupWindow(
             previewLabel,
@@ -139,6 +147,7 @@ class KeyboardView(
         ).apply {
             isFocusable = false
             isOutsideTouchable = false
+            elevation = 6f.dp
         }
         previewShowing = false
     }
@@ -148,9 +157,9 @@ class KeyboardView(
         hideKeyPreview()
 
         previewLabel.text = char
-        previewLabel.setTextColor(if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt())
+        previewLabel.setTextColor(onSurfaceColor)
         (previewLabel.background as? GradientDrawable)?.setColor(
-            if (isDark) 0xFF4A4A4A.toInt() else 0xFFFFFFFF.toInt()
+            if (isDark) 0xFF3A3D44.toInt() else 0xFFFFFFFF.toInt()
         )
 
         previewLabel.measure(
@@ -212,20 +221,18 @@ class KeyboardView(
     // ── Suggestion strip ───────────────────────────────────────────────────
 
     private fun buildSuggestionBar(): LinearLayout {
-        val barBg = if (isDark) 0xFF111111.toInt() else 0xFFC8CDD4.toInt()
-        val chipColor = if (isDark) 0xFFCCCCCC.toInt() else 0xFF444444.toInt()
-        val divColor = if (isDark) 0xFF333333.toInt() else 0xFF9EA5AE.toInt()
+        val chipColor = onSurfaceMuted
+        val divColor = hairlineColor
 
         return LinearLayout(context).apply {
             orientation = HORIZONTAL
-            setBackgroundColor(barBg)
+            setBackgroundColor(surfaceColor)
             gravity = Gravity.CENTER_VERTICAL
 
             // Leading collapse chevron — returns to the icon toolbar.
             addView(TextView(context).apply {
                 text = "‹"
-                textSize = 24f
-                typeface = Typeface.DEFAULT_BOLD
+                textSize = 22f
                 gravity = Gravity.CENTER
                 setTextColor(chipColor)
                 isClickable = true
@@ -247,7 +254,7 @@ class KeyboardView(
                 val chip = TextView(context).apply {
                     textSize = 14f
                     gravity = Gravity.CENTER
-                    setTextColor(chipColor)
+                    setTextColor(onSurfaceColor)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setPadding(8.dp, 0, 8.dp, 0)
@@ -288,12 +295,12 @@ class KeyboardView(
     // ── Toolbar ────────────────────────────────────────────────────────────
 
     private fun buildToolbar(): LinearLayout {
-        val iconTint = if (isDark) 0xFFBDBDBD.toInt() else 0xFF444444.toInt()
+        val iconTint = onSurfaceMuted
         return LinearLayout(context).apply {
             orientation = HORIZONTAL
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 44.dp)
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(if (isDark) 0xFF111111.toInt() else 0xFFC8CDD4.toInt())
+            setBackgroundColor(surfaceColor)
 
             val leftGroup = LinearLayout(context).apply {
                 orientation = HORIZONTAL
@@ -335,9 +342,9 @@ class KeyboardView(
     // ── Inline settings panel ──────────────────────────────────────────────
 
     private fun buildSettingsPanel(): LinearLayout {
-        val bgColor = if (isDark) 0xFF111111.toInt() else 0xFFD1D5DB.toInt()
-        val textColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
-        val hintColor = if (isDark) 0xFF888888.toInt() else 0xFF666666.toInt()
+        val bgColor = surfaceColor
+        val textColor = onSurfaceColor
+        val hintColor = onSurfaceMuted
 
         fun sectionLabel(text: String) = TextView(context).apply {
             this.text = text
@@ -657,9 +664,9 @@ class KeyboardView(
     }
 
     private fun buildClipboardPanel(): LinearLayout {
-        val bgColor = if (isDark) 0xFF111111.toInt() else 0xFFD1D5DB.toInt()
-        val textColor = if (isDark) 0xFFFFFFFF.toInt() else 0xFF1A1A1A.toInt()
-        val cardBg = if (isDark) 0xFF2A2A2A.toInt() else 0xFFFFFFFF.toInt()
+        val bgColor = surfaceColor
+        val textColor = onSurfaceColor
+        val cardBg = if (isDark) 0xFF2C2E33.toInt() else 0xFFFFFFFF.toInt()
 
         val clipItems = ClipboardHistory.all(context).toMutableList()
 
@@ -761,7 +768,7 @@ class KeyboardView(
             gridContainer.addView(TextView(context).apply {
                 text = "No clipboard items"
                 textSize = 13f
-                setTextColor(if (isDark) 0xFF888888.toInt() else 0xFF666666.toInt())
+                setTextColor(onSurfaceMuted)
                 gravity = Gravity.CENTER
                 setPadding(0, 20.dp, 0, 20.dp)
                 layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
@@ -881,8 +888,8 @@ class KeyboardView(
     }
 
     private fun buildEmojiPanel(): LinearLayout {
-        val bgColor = if (isDark) 0xFF111111.toInt() else 0xFFD1D5DB.toInt()
-        val tabActiveBg = if (isDark) 0xFF333333.toInt() else 0xFFBBBBBB.toInt()
+        val bgColor = surfaceColor
+        val tabActiveBg = if (isDark) 0xFF2C2E33.toInt() else 0xFFFFFFFF.toInt()
 
         data class EmojiCategory(val icon: String, val emojis: List<String>)
 
@@ -894,63 +901,63 @@ class KeyboardView(
                 "🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫",
                 "🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬",
                 "🤥","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮",
-                "🤧","🥵","🥶","🥴","😵","😡","🤠","🥸","😎","🤓",
-                "🤐","😕","😟","🙁","☹","😮","😯","😲","😳","🥺",
+                "🤧","🥵","🥶","🥴","😵","🤯","🤠","🥸","😎","🤓",
+                "🧐","😕","😟","🙁","☹","😮","😯","😲","😳","🥺",
                 "😦","😧","😨","😰","😥","😢","😭","😱","😖","😣",
                 "😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈"
             )))
             add(EmojiCategory("👋", listOf(
                 "👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌","🤞",
                 "🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝","👍",
-                "👎","✊","👊","🤛","🤜","👏","🙌","🪶","👐","🤲",
-                "🤝","🙏","✍","💅","🤳","💪","🦾","🦿","🦵","🦶",
-                "👂","🦻","👃","🪷","🪸","🦷","🦴","🦳","👀","👁",
-                "👅","👄","💋","🪶","👶","🧒","👦","👧","🧑","👱"
+                "👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝",
+                "🙏","✍","💅","🤳","💪","🦾","🦿","🦵","🦶","👂",
+                "🦻","👃","🧠","🦷","🦴","👀","👁","👅","👄","💋",
+                "👶","🧒","👦","👧","🧑","👱","👨","👩","🧓","👴"
             )))
             add(EmojiCategory("🐶", listOf(
                 "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯",
                 "🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧",
                 "🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄",
-                "🐝","🪱","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🪳",
-                "🕷","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐",
-                "🦞","🦟","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊"
+                "🐝","🪱","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷",
+                "🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞",
+                "🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅"
             )))
             add(EmojiCategory("🍕", listOf(
                 "🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐",
                 "🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑",
-                "🥦","🤬","🥒","🌶","🫑","🧄","🧅","🥔","🍠","🥐",
-                "🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧨","🥞","🦷",
-                "🥓","🍖","🍗","🌭","🍔","🍟","🍕","🪳","🥪","🥙",
-                "🥗","🦸","🌮","🌯","🪴","🍱","🍘","🍙","🍚","🍛"
+                "🥦","🥬","🥒","🌶","🫑","🧄","🧅","🥔","🍠","🥐",
+                "🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧈","🥞","🧇",
+                "🥓","🍖","🍗","🌭","🍔","🍟","🍕","🫓","🥪","🥙",
+                "🥗","🍝","🌮","🌯","🫔","🍱","🍘","🍙","🍚","🍛"
             )))
             add(EmojiCategory("⚽", listOf(
                 "⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱",
-                "🏓","🏸","🏒","🏑","🥍","🏏","🪁","🫕","⛳","🪃",
-                "🏹","🎣","🤿","🥊","🥋","🎽","🛹","🚼","🛷","⛸",
-                "🥌","🎿","⛷","🏂","🫂","🏋","🤼","🤸","⛹","🤺",
+                "🏓","🏸","🏒","🏑","🥍","🏏","🪁","🎯","⛳","🪃",
+                "🏹","🎣","🤿","🥊","🥋","🎽","🛹","🛼","🛷","⛸",
+                "🥌","🎿","⛷","🏂","🪂","🏋","🤼","🤸","⛹","🤺",
                 "🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆"
             )))
             add(EmojiCategory("✈️", listOf(
                 "🚗","🚕","🚙","🚌","🚎","🏎","🚓","🚑","🚒","🚐",
-                "🚛","🚴","🛴","🚲","🛵","🛍","🚺","🚅","🚄","🚈",
-                "🚂","🚆","🚇","🚊","🚉","✈","🛫","🛬","🪼","💺",
+                "🚚","🚛","🚜","🛴","🚲","🛵","🏍","🚨","🚅","🚄",
+                "🚈","🚂","🚆","🚇","🚊","🚉","✈","🛫","🛬","💺",
                 "🛰","🚀","🛸","🚁","🛶","⛵","🚤","🛥","🛳","⛴",
-                "🚢","⚓","🧭","🧿","🧱","🏕","🏖","🏜","🏝","🏞"
+                "🚢","⚓","🧭","🗺","🗿","🏕","🏖","🏜","🏝","🏞"
             )))
             add(EmojiCategory("💡", listOf(
-                "⌚","📱","📲","💻","⌨","🖵","🖶","🖱","🖲","🖳",
-                "💽","💾","💿","📀","📼","📷","📸","📹","🍚","⌛",
-                "⏱","⏲","⏰","🕰","⌚","⏳","📡","🔋","🪫","🔌",
-                "💡","🔦","🕯","🤔","🛢","💸","💵","💴","💶","💷",
-                "🪙","💳","🪙","💰","💴","💵","💶","💷","🏷","📫"
+                "⌚","📱","📲","💻","⌨","🖥","🖨","🖱","🖲","🕹",
+                "💽","💾","💿","📀","📼","📷","📸","📹","🎥","⌛",
+                "⏱","⏲","⏰","🕰","⏳","📡","🔋","🪫","🔌","💡",
+                "🔦","🕯","🪔","🧯","🛢","💸","💵","💴","💶","💷",
+                "🪙","💰","💳","💎","⚖","🪜","🧰","🔧","🔨","📫"
             )))
             add(EmojiCategory("❤️", listOf(
                 "❤","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔",
                 "❣","💕","💞","💓","💗","💖","💘","💝","💟","☮",
                 "✝","☪","🕉","☸","✡","🔯","🕎","☯","☦","🛐",
                 "⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐",
-                "♑","♒","♓","🆔","⚕","♻","⛜","🔱","🔰","⭕",
-                "✅","☑","✔","❎","🔲","🔳","⬜","⬛","◼","◻"
+                "♑","♒","♓","🆔","⚕","♻","🔱","🔰","⭕","✅",
+                "☑","✔","❎","🔲","🔳","⬜","⬛","◼","◻","▪"
             )))
             add(EmojiCategory("🏁", listOf(
                 "🏁","🚩","🎌","🏴","🏳",
@@ -980,19 +987,22 @@ class KeyboardView(
 
         val tabScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 38.dp)
-            setBackgroundColor(if (isDark) 0xFF1A1A1A.toInt() else 0xFFC0C5CC.toInt())
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 40.dp)
+            setBackgroundColor(surfaceColor)
         }
         val tabRow = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(4.dp, 2.dp, 4.dp, 2.dp)
+            setPadding(6.dp, 4.dp, 6.dp, 4.dp)
         }
         val tabViews = mutableListOf<TextView>()
 
         fun loadCategory(idx: Int) {
             tabViews.forEachIndexed { i, tv ->
-                tv.setBackgroundColor(if (i == idx) tabActiveBg else Color.TRANSPARENT)
+                tv.background = if (i == idx) GradientDrawable().apply {
+                    setColor(tabActiveBg)
+                    cornerRadius = 8f.dp
+                } else null
             }
             contentGrid.removeAllViews()
             val emojis = categories[idx].emojis
@@ -1044,9 +1054,9 @@ class KeyboardView(
         panel.addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.END
-            setBackgroundColor(if (isDark) 0xFF1A1A1A.toInt() else 0xFFC0C5CC.toInt())
+            setBackgroundColor(surfaceColor)
             // Delete button — lets the user fix a mis-tapped emoji without leaving the panel.
-            val delTint = if (isDark) 0xFFE0E0E0.toInt() else 0xFF333333.toInt()
+            val delTint = onSurfaceMuted
             addView(ImageView(context).apply {
                 val d = context.getDrawable(R.drawable.ic_backspace)?.mutate()
                 d?.setTint(delTint)
@@ -1119,7 +1129,7 @@ class KeyboardView(
             val rowView = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, keyHeightPx)
-                setPadding(hp + 2.dp, 2.dp, hp + 2.dp, 2.dp)
+                setPadding(hp + 3.dp, 3.dp, hp + 3.dp, 3.dp)
                 clipChildren = false
                 clipToPadding = false
             }
@@ -1133,7 +1143,7 @@ class KeyboardView(
             val rowKeys = rowDefs.map { def ->
                 KeyView(context, def, listener).also { kv ->
                     rowView.addView(kv, LayoutParams(0, LayoutParams.MATCH_PARENT, def.widthWeight).apply {
-                        setMargins(1.dp, 0, 1.dp, 0)
+                        setMargins(2.dp, 0, 2.dp, 0)
                     })
                 }
             }
