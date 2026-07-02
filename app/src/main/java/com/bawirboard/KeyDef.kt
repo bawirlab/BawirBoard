@@ -202,6 +202,31 @@ object KarakalpakLayout {
     val NUMBER_ROWS = listOf(NUMBERS_ROW1, NUMBERS_ROW2, NUMBERS_ROW3, NUMBERS_ROW4)
     val SYMBOL_ROWS = listOf(SYMBOLS_ROW1, SYMBOLS_ROW2, SYMBOLS_ROW3, SYMBOLS_ROW4)
 
+    // Dedicated numeric keypad, shown automatically when the focused field only
+    // accepts digits (inputType number/datetime/phone). Digits use LETTER type so
+    // they get the large label and key preview treatment of regular keys.
+    private val NUM_PAD_ROWS = listOf(
+        listOf(KeyDef("1"), KeyDef("2"), KeyDef("3"), KeyDef("⌫", type = KeyType.DELETE)),
+        listOf(KeyDef("4"), KeyDef("5"), KeyDef("6"), KeyDef("+")),
+        listOf(KeyDef("7"), KeyDef("8"), KeyDef("9"), KeyDef("-")),
+        listOf(
+            KeyDef(".", popupChars = listOf(":", "/"), popupCharsShiftedOverride = listOf(":", "/")),
+            KeyDef("0"),
+            KeyDef(","),
+            KeyDef("↵", type = KeyType.ENTER)
+        )
+    )
+
+    private val PHONE_PAD_ROWS = listOf(
+        listOf(KeyDef("1"), KeyDef("2"), KeyDef("3"), KeyDef("⌫", type = KeyType.DELETE)),
+        listOf(KeyDef("4"), KeyDef("5"), KeyDef("6"), KeyDef("+")),
+        listOf(KeyDef("7"), KeyDef("8"), KeyDef("9"),
+            KeyDef(",", popupChars = listOf(";"), popupCharsShiftedOverride = listOf(";"))),
+        listOf(KeyDef("*"), KeyDef("0"), KeyDef("#"), KeyDef("↵", type = KeyType.ENTER))
+    )
+
+    fun numpadRows(phone: Boolean): List<List<KeyDef>> = if (phone) PHONE_PAD_ROWS else NUM_PAD_ROWS
+
     fun getLetterRows(context: Context): List<List<KeyDef>> {
         val base = listOf(LETTERS_ROW1, LETTERS_ROW2, LETTERS_ROW3, LETTERS_ROW4)
         return if (PrefsManager.isNumberRowEnabled(context)) listOf(NUMBER_ROW) + base else base

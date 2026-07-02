@@ -50,8 +50,14 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         // Capture anything copied before the keyboard became active for this field.
         captureClipboard()
         keyboardView?.let { kb ->
-            if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
-                kb.switchMode(KeyboardView.Mode.LETTERS)
+            // Digit-only fields get a dedicated numeric keypad instead of letters.
+            when ((info?.inputType ?: 0) and InputType.TYPE_MASK_CLASS) {
+                InputType.TYPE_CLASS_NUMBER,
+                InputType.TYPE_CLASS_DATETIME -> kb.switchToNumpad(phone = false)
+                InputType.TYPE_CLASS_PHONE -> kb.switchToNumpad(phone = true)
+                else -> if (kb.currentMode() != KeyboardView.Mode.LETTERS) {
+                    kb.switchMode(KeyboardView.Mode.LETTERS)
+                }
             }
             kb.applyShift(KeyboardView.ShiftState.OFF)
         }
@@ -116,18 +122,31 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         return if (start == android.icu.text.BreakIterator.DONE) end else end - start
     }
 
+    // Flexible enter: in text fields a tap always starts a new line, even when the
+    // app declares a send/go/next action — that action is available on long-press
+    // instead (onKeyEnterLongPress). Digit-only fields have no use for a newline,
+    // so there enter performs the field's action directly.
     override fun onKeyEnter() {
         val ic = currentInputConnection ?: return
-        val ei = currentInputEditorInfo
-        val imeAction = (ei?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
-        val isMultiLine = (ei?.inputType ?: 0) and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0
-        val noEnterAction = (ei?.imeOptions ?: 0) and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0
+        val inputClass = (currentInputEditorInfo?.inputType ?: 0) and InputType.TYPE_MASK_CLASS
+        if (inputClass == InputType.TYPE_CLASS_TEXT || inputClass == 0) {
+            ic.commitText("\n", 1)
+        } else {
+            performEnterAction()
+        }
+    }
 
-        when {
-            isMultiLine || noEnterAction -> ic.commitText("\n", 1)
-            imeAction != EditorInfo.IME_ACTION_NONE &&
-            imeAction != EditorInfo.IME_ACTION_UNSPECIFIED -> ic.performEditorAction(imeAction)
-            else -> ic.commitText("\n", 1)
+    override fun onKeyEnterLongPress() {
+        performEnterAction()
+    }
+
+    private fun performEnterAction() {
+        val ic = currentInputConnection ?: return
+        val imeAction = (currentInputEditorInfo?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
+        if (imeAction != EditorInfo.IME_ACTION_NONE && imeAction != EditorInfo.IME_ACTION_UNSPECIFIED) {
+            ic.performEditorAction(imeAction)
+        } else {
+            sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         }
     }
 
