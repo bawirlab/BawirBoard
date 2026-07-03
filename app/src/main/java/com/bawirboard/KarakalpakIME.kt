@@ -132,22 +132,36 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
         return if (start == android.icu.text.BreakIterator.DONE) end else end - start
     }
 
-    // Flexible enter: in text fields a tap always starts a new line, even when the
-    // app declares a send/go/next action — that action is available on long-press
-    // instead (onKeyEnterLongPress). Digit-only fields have no use for a newline,
-    // so there enter performs the field's action directly.
+    // Smart enter: adapts to the field being typed in. Single-line fields
+    // (search bars, URL bars, login forms, chat inputs with a send action) get
+    // their declared IME action — search, go, send, next, done — while multiline
+    // editors (notes, long messages) get a literal newline. Long-press does the
+    // opposite, so both behaviors stay reachable in every field.
     override fun onKeyEnter() {
-        val ic = currentInputConnection ?: return
-        val inputClass = (currentInputEditorInfo?.inputType ?: 0) and InputType.TYPE_MASK_CLASS
-        if (inputClass == InputType.TYPE_CLASS_TEXT || inputClass == 0) {
-            ic.commitText("\n", 1)
+        if (enterShouldInsertNewline()) {
+            currentInputConnection?.commitText("\n", 1)
         } else {
             performEnterAction()
         }
     }
 
     override fun onKeyEnterLongPress() {
-        performEnterAction()
+        if (enterShouldInsertNewline()) {
+            performEnterAction()
+        } else {
+            currentInputConnection?.commitText("\n", 1)
+        }
+    }
+
+    // A newline is what enter means only in multiline text editors. Apps mark
+    // those with TYPE_TEXT_FLAG_MULTI_LINE, or with IME_FLAG_NO_ENTER_ACTION
+    // when a multiline field declares an action that belongs on a separate
+    // send button rather than on the enter key.
+    private fun enterShouldInsertNewline(): Boolean {
+        val info = currentInputEditorInfo ?: return false
+        if ((info.inputType and InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT) return false
+        if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) return true
+        return (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
     }
 
     private fun performEnterAction() {
