@@ -66,10 +66,17 @@ class KeyboardView(
     // Inline settings panel (built lazily)
     private var settingsPanel: LinearLayout? = null
     private var settingsShowing = false
+    // Set when a setting that affects key layout (size sliders, number row) changes,
+    // so closing the panel only rebuilds the keyboard when it actually has to.
+    private var settingsLayoutDirty = false
 
-    // Inline emoji panel (built lazily). Recents persist across keyboard rebuilds.
+    // Inline emoji panel (built lazily and cached — rebuilding hundreds of emoji
+    // views on every open causes visible lag on low-end devices). Recents persist
+    // across keyboard rebuilds; refreshEmojiPanel re-renders the current tab on
+    // reopen so the recents tab stays current without a full rebuild.
     private var emojiPanel: LinearLayout? = null
     private var emojiShowing = false
+    private var refreshEmojiPanel: (() -> Unit)? = null
     private val recentEmojis = mutableListOf<String>().apply {
         addAll(PrefsManager.getRecentEmojis(context).split(" ").filter { it.isNotBlank() })
     }
@@ -544,9 +551,11 @@ class KeyboardView(
             addView(sectionLabel("SIZE"))
             addView(makeSeekRow("Height", 5, heightProgress) { p ->
                 PrefsManager.setKeyHeightScale(context, 0.8f + p * 0.1f)
+                settingsLayoutDirty = true
             })
             addView(makeSeekRow("Width", 6, widthProgress) { p ->
                 PrefsManager.setKeyWidthScale(context, 0.7f + p * 0.05f)
+                settingsLayoutDirty = true
             })
 
             addView(sectionLabel("THEME"))
@@ -601,6 +610,8 @@ class KeyboardView(
                 PrefsManager.setNumberRowEnabled(context, checked)
                 buildLetterContent()
                 applyShiftToKeys()
+                // The Cyrillic layout also carries the number row; rebuild it on close.
+                settingsLayoutDirty = true
             })
 
             addView(switchRow("Word suggestions", PrefsManager.isSuggestionsEnabled(context)) { checked ->
@@ -682,7 +693,12 @@ class KeyboardView(
         allKeyContainer.visibility = VISIBLE
         settingsShowing = false
         if (!emojiShowing && !clipboardShowing) showSuggestions(currentSuggestions.toList())
-        rebuildAll()
+        // Rebuilding every layout is expensive; only do it when a layout-affecting
+        // setting actually changed while the panel was open.
+        if (settingsLayoutDirty) {
+            settingsLayoutDirty = false
+            rebuildAll()
+        }
     }
 
     // ── Theme refresh ──────────────────────────────────────────────────────
@@ -693,6 +709,7 @@ class KeyboardView(
         settingsShowing = false
         emojiPanel = null
         emojiShowing = false
+        refreshEmojiPanel = null
         clipboardPanel = null
         clipboardShowing = false
         applyBg()
@@ -997,7 +1014,11 @@ class KeyboardView(
                     ClipboardHistory.clear(context)
                     try {
                         val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipMgr.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                            clipMgr.clearPrimaryClip()
+                        } else {
+                            clipMgr.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
+                        }
                     } catch (_: Exception) {}
                     refreshClipboardPanel()
                 }
@@ -1038,26 +1059,29 @@ class KeyboardView(
         }
         hideSettingsPanel()
         hideClipboardPanel()
-        removeView(emojiPanel)
         // Match the current key-area height so the IME window stays the same size.
         val targetH = allKeyContainer.height
-        emojiPanel = buildEmojiPanel()
-        addView(
-            emojiPanel,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
-            )
-        )
-        emojiPanel?.let { animatePanelIn(it) }
+        val cached = emojiPanel != null
+        if (!cached) {
+            emojiPanel = buildEmojiPanel()
+            addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+        emojiPanel?.let { panel ->
+            panel.layoutParams = panel.layoutParams.apply {
+                height = if (targetH > 0) targetH else LayoutParams.WRAP_CONTENT
+            }
+            panel.visibility = VISIBLE
+            animatePanelIn(panel)
+        }
+        // A freshly built panel already rendered its initial tab.
+        if (cached) refreshEmojiPanel?.invoke()
         allKeyContainer.visibility = GONE
         emojiShowing = true
         showToolbar()
     }
 
     private fun hideEmojiPanel() {
-        emojiPanel?.let { removeView(it) }
-        emojiPanel = null
+        emojiPanel?.visibility = GONE
         allKeyContainer.visibility = VISIBLE
         emojiShowing = false
         if (!settingsShowing && !clipboardShowing) showSuggestions(currentSuggestions.toList())
@@ -1076,8 +1100,10 @@ class KeyboardView(
 
         data class EmojiCategory(val icon: String, val emojis: List<String>)
 
+        // The recents tab is always present; its content is read live from
+        // recentEmojis at load time so the cached panel never shows stale recents.
         val categories = buildList {
-            if (recentEmojis.isNotEmpty()) add(EmojiCategory("🕑", recentEmojis.toList()))
+            add(EmojiCategory("🕑", emptyList()))
             add(EmojiCategory("😀", listOf(
                 "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃",
                 "😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙",
@@ -1222,8 +1248,10 @@ class KeyboardView(
             setPadding(6.dp, 4.dp, 6.dp, 4.dp)
         }
         val tabViews = mutableListOf<TextView>()
+        var currentCategory = 0
 
         fun loadCategory(idx: Int) {
+            currentCategory = idx
             tabViews.forEachIndexed { i, tv ->
                 tv.background = if (i == idx) GradientDrawable().apply {
                     setColor(tabActiveBg)
@@ -1231,7 +1259,7 @@ class KeyboardView(
                 } else null
             }
             contentGrid.removeAllViews()
-            val emojis = categories[idx].emojis
+            val emojis = if (idx == 0) recentEmojis.toList() else categories[idx].emojis
             val perRow = 8
             var rowL: LinearLayout? = null
             emojis.forEachIndexed { i, emoji ->
@@ -1304,7 +1332,12 @@ class KeyboardView(
             }, LayoutParams(64.dp, 48.dp))
         })
 
-        loadCategory(0)
+        // Re-renders the current tab on every reopen of the cached panel, falling
+        // back to smileys while there are no recents yet.
+        refreshEmojiPanel = {
+            loadCategory(if (currentCategory == 0 && recentEmojis.isEmpty()) 1 else currentCategory)
+        }
+        refreshEmojiPanel?.invoke()
         return panel
     }
 

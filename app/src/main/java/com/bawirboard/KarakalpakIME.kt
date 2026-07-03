@@ -19,6 +19,11 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private var lastNumberRowSetting = false
     private var lastDarkMode = true
 
+    // True while the focused field is a password (or the app asked for no
+    // personalized learning, e.g. a browser's incognito mode). The suggestion
+    // strip must never echo what is typed in such fields.
+    private var privateField = false
+
     private val MAX_TRANSLIT_CHARS = 10000
 
     private var clipboardManager: ClipboardManager? = null
@@ -57,6 +62,7 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        privateField = isPrivateField(info)
         // Capture anything copied before the keyboard became active for this field.
         captureClipboard()
         keyboardView?.let { kb ->
@@ -72,6 +78,18 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
             kb.applyShift(KeyboardView.ShiftState.OFF)
         }
         updateSuggestions()
+    }
+
+    private fun isPrivateField(info: EditorInfo?): Boolean {
+        val inputType = info?.inputType ?: return false
+        if ((inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT) {
+            when (inputType and InputType.TYPE_MASK_VARIATION) {
+                InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD -> return true
+            }
+        }
+        return (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
     }
 
     override fun onWindowShown() {
@@ -212,15 +230,21 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
 
     override fun onTransliterate() {
         val ic = currentInputConnection ?: return
+        ic.finishComposingText()
         val before = ic.getTextBeforeCursor(MAX_TRANSLIT_CHARS, 0)?.toString() ?: ""
+        val selected = ic.getSelectedText(0)?.toString() ?: ""
         val after = ic.getTextAfterCursor(MAX_TRANSLIT_CHARS, 0)?.toString() ?: ""
-        val full = before + after
+        val full = before + selected + after
         if (full.isEmpty()) return
 
         val translated = Transliterator.autoTransliterate(full)
         if (translated == full) return
 
         ic.beginBatchEdit()
+        // Replace any selection first (committing empty text over a selection removes
+        // it), then the text on both sides — otherwise selected text would survive
+        // untouched and leave the field in two scripts.
+        if (selected.isNotEmpty()) ic.commitText("", 1)
         ic.deleteSurroundingText(before.length, after.length)
         ic.commitText(translated, 1)
         ic.endBatchEdit()
@@ -254,6 +278,11 @@ class KarakalpakIME : InputMethodService(), KeyboardView.KeyListener {
     private fun updateSuggestions() {
         if (!SuggestionEngine.isLoaded) return
         val kb = keyboardView ?: return
+        if (privateField) {
+            kb.showSuggestions(emptyList())
+            kb.showToolbar()
+            return
+        }
         if (!PrefsManager.isSuggestionsEnabled(this)) {
             kb.showSuggestions(emptyList())
             kb.showToolbar()
