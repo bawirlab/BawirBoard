@@ -346,9 +346,10 @@ class KeyView(
                 isLongPressing = false
             }
             keyDef.type == KeyType.ENTER -> {
-                // Tap types a newline in text fields; the field's send/go/next
-                // action lives on long-press. isLongPressing stays true so the
-                // release doesn't also insert a newline.
+                // Long-press does the opposite of a tap (see KarakalpakIME): a
+                // newline where tap runs the field's action, and the action where
+                // tap inserts a newline. isLongPressing stays true so the release
+                // doesn't also fire the tap behavior.
                 longPressFeedback()
                 listener.onKeyEnterLongPress()
             }
